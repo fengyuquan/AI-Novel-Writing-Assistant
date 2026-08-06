@@ -25,6 +25,7 @@ import healthRouter from "./routes/health";
 import imagesRouter from "./routes/images";
 import knowledgeRouter from "./routes/knowledge";
 import llmRouter from "./routes/llm";
+import promptLogRouter from "./platform/llm/promptLog/http/promptLogRoutes";
 import llmLiveRouter from "./platform/llm/live/http/llmLiveRoutes";
 import novelRouter from "./modules/novel/http/novel";
 import dramaRouter from "./modules/drama/http/dramaRoutes";
@@ -128,6 +129,7 @@ export function createApp() {
   app.use("/api/genres", genreRouter);
   app.use("/api/story-modes", storyModeRouter);
   app.use("/api/knowledge", knowledgeRouter);
+  app.use("/api/llm/prompt-logs", promptLogRouter);
   app.use("/api/llm", llmRouter);
   app.use("/api/llm-live", llmLiveRouter);
   app.use("/api/title-library", titleLibraryRouter);

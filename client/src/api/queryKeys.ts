@@ -151,6 +151,9 @@ export const queryKeys = {
     autoDirectorApprovalPreferences: ["settings", "auto-director-approval-preferences"] as const,
     pendingReviewAutoPromotion: ["settings", "pending-review-auto-promotion"] as const,
     quickSetup: ["settings", "quick-setup"] as const,
+    promptLogs: (params: string) => ["settings", "prompt-logs", params] as const,
+    promptLogSettings: ["settings", "prompt-log-settings"] as const,
+    promptLogDetail: (id: string) => ["settings", "prompt-logs", "detail", id] as const,
   },
   onboarding: {
     firstNovel: ["onboarding", "first-novel"] as const,

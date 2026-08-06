@@ -2345,6 +2345,34 @@ model DirectorLlmUsageRecord {
   @@index([attributionStatus, recordedAt])
 }
 
+model LlmPromptInvocationLog {
+  id              String   @id @default(cuid())
+  requestId       String
+  provider        String
+  model           String
+  taskType        String?
+  method          String
+  promptAssetKey  String?
+  promptVersion   String?
+  novelId         String?
+  taskId          String?
+  runId           String?
+  nodeKey         String?
+  chapterId       String?
+  messagesJson    String
+  messageChars    Int      @default(0)
+  messageCount    Int      @default(0)
+  truncated       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([provider, createdAt])
+  @@index([promptAssetKey, createdAt])
+  @@index([novelId, createdAt])
+  @@index([taskId, createdAt])
+  @@index([requestId])
+}
+
 model DirectorEvent {
   id             String             @id
   runId          String?

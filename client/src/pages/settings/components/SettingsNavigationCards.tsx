@@ -77,6 +77,25 @@ export default function SettingsNavigationCards(props: {
         </CardContent>
         </Card>
       ) : null}
+
+      {mode === "all" ? (
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader>
+            <CardTitle>提示词调用记录</CardTitle>
+            <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>
+              查看系统发给模型的提示词，便于排查生成结果；支持筛选、导出和清空。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsEntryActionRow}>
+            <div className={`min-w-0 text-sm text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
+              默认只保存请求提示词，不保存模型回复。
+            </div>
+            <Button asChild className={AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction}>
+              <Link to="/settings/prompt-logs">打开提示词记录</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
     </>
   );
 }

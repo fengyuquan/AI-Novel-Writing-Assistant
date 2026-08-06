@@ -2,6 +2,7 @@ import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { ChatOpenAI } from "@langchain/openai";
 import type { TaskType } from "./modelRouter";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
+import { promptLogService } from "../platform/llm/promptLog/PromptLogService";
 import { appendLlmSessionLog } from "./sessionLogFile";
 
 const LLM_DEBUG_PATCHED = Symbol("LLM_DEBUG_PATCHED");
@@ -182,7 +183,7 @@ function formatSerializedPayload(payload: MessageLogEntry[] | string): string {
   }).join("\n");
 }
 
-function serializeLLMInputForJson(method: "invoke" | "stream" | "batch", input: unknown): unknown {
+export function serializeLLMInputForJson(method: "invoke" | "stream" | "batch", input: unknown): unknown {
   if (method !== "batch" || !Array.isArray(input)) {
     return serializeSingleLLMInput(input);
   }
@@ -436,7 +437,36 @@ function logLlmFileBlock(input: {
   appendLlmSessionLog(buildFileLogBlock(input));
 }
 
+function recordPromptLogRequest(
+  method: "invoke" | "stream" | "batch",
+  input: unknown,
+  meta: LLMDebugMeta,
+  requestId: string,
+): void {
+  const promptMeta = meta.promptMeta;
+  promptLogService.recordRequest({
+    requestId,
+    provider: meta.provider,
+    model: meta.model,
+    taskType: meta.taskType ?? promptMeta?.taskType ?? null,
+    method,
+    promptAssetKey: promptMeta?.promptId ?? null,
+    promptVersion: promptMeta?.promptVersion ?? null,
+    novelId: promptMeta?.novelId ?? null,
+    taskId: promptMeta?.taskId ?? null,
+    runId: null,
+    nodeKey: promptMeta?.stage ?? promptMeta?.itemKey ?? null,
+    chapterId: promptMeta?.chapterId ?? null,
+    messages: serializeLLMInputForJson(method, input),
+  });
+}
+
 function logLLMRequest(method: "invoke" | "stream" | "batch", input: unknown, meta: LLMDebugMeta, requestId: string): void {
+  const payload = serializeLLMInputForJson(method, input);
+  recordPromptLogRequest(method, input, meta, requestId);
+  if (!shouldLogLLMRequests()) {
+    return;
+  }
   const rendered = buildRequestLogText(method, input, meta);
   console.info(rendered);
   logLlmFileBlock({
@@ -444,11 +474,14 @@ function logLLMRequest(method: "invoke" | "stream" | "batch", input: unknown, me
     event: "request",
     method,
     meta,
-    payload: serializeLLMInputForJson(method, input),
+    payload,
   });
 }
 
 function logLLMResponse(method: "invoke" | "stream" | "batch", output: unknown, meta: LLMDebugMeta, requestId: string, latencyMs: number): void {
+  if (!shouldLogLLMRequests()) {
+    return;
+  }
   const renderedOutput = serializeLLMOutput(method, output);
   console.info(
     [
@@ -472,6 +505,9 @@ function logLLMResponse(method: "invoke" | "stream" | "batch", output: unknown, 
 }
 
 function logLLMError(method: "invoke" | "stream" | "batch", error: unknown, meta: LLMDebugMeta, requestId: string, latencyMs: number): void {
+  if (!shouldLogLLMRequests()) {
+    return;
+  }
   const message = error instanceof Error ? error.message : String(error);
   console.warn(
     [
@@ -525,10 +561,8 @@ function wrapLoggedStream(stream: AsyncIterable<unknown>, meta: LLMDebugMeta, re
 }
 
 export function attachLLMDebugLogging(llm: ChatOpenAI, meta: LLMDebugMeta): ChatOpenAI {
-  if (!shouldLogLLMRequests()) {
-    return llm;
-  }
-
+  // Always patch so product prompt-log persistence works even when file/console
+  // debug logging is disabled (e.g. production with LLM_DEBUG_LOG=off).
   const patchable = llm as PatchableChatOpenAI;
   if (patchable[LLM_DEBUG_PATCHED]) {
     return llm;

@@ -43,6 +43,8 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 ### Debugging
 
 - [重复故障模式与排查路径](./debugging/recurring-failure-modes.md)
+- [提示词调用记录](./debugging/llm-prompt-invocation-log.md)
+- [日志保留与轮转规则](./debugging/log-retention.md)
 
 ### Product
 
