@@ -16,6 +16,7 @@ import type {
   DirectorCandidate,
   DirectorCandidateBatch,
   DirectorConfirmRequest,
+  DirectorStepCalibrationRequest,
 } from "@ai-novel/shared/types/novelDirector";
 import type {
   CompleteQuickSetupRequest,
@@ -23,10 +24,16 @@ import type {
   FirstNovelOnboardingProjection,
   QuickSetupStatus,
 } from "@ai-novel/shared/types/onboarding";
+import type { StoryMacroPlan } from "@ai-novel/shared/types/storyMacro";
 import type { TaskOverviewSummary, UnifiedTaskListResponse } from "@ai-novel/shared/types/task";
 import type { ApiClient } from "./lib/http.js";
 import { readSseJsonFrames } from "./lib/sse.js";
 
+export interface OutlineOptimizePreview {
+  optimizedDraft: string;
+  mode?: string;
+  selectedText?: string;
+}
 export interface NovelListItem {
   id: string;
   title: string;
@@ -105,6 +112,32 @@ export function createApi(client: ApiClient) {
         commandType: "approve_gate",
         payload: {},
       });
+    },
+
+    calibrateDirectorStep(taskId: string, payload: DirectorStepCalibrationRequest) {
+      return client.post<DirectorCommandAcceptedResponse>(`/novels/director/tasks/${taskId}/commands`, {
+        commandType: "calibrate_step",
+        payload,
+      });
+    },
+
+    acceptManualChangesAndContinue(taskId: string) {
+      return client.post<DirectorCommandAcceptedResponse>(`/novels/director/tasks/${taskId}/commands`, {
+        commandType: "accept_manual_changes_and_continue",
+        payload: {},
+      });
+    },
+
+    getStoryMacro(novelId: string) {
+      return client.get<StoryMacroPlan | null>(`/novels/${novelId}/story-macro`);
+    },
+
+    optimizeOutlinePreview(novelId: string, payload: { currentDraft: string; instruction: string; mode?: "full" | "selection" }) {
+      return client.post<OutlineOptimizePreview>(`/novels/${novelId}/outline/optimize-preview`, payload);
+    },
+
+    updateNovel(novelId: string, payload: Partial<Pick<Novel, "outline" | "structuredOutline" | "title" | "description">>) {
+      return client.put<Novel>(`/novels/${novelId}`, payload);
     },
 
     confirmDirectorCandidate(taskId: string, payload: DirectorConfirmRequest) {

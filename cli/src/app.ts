@@ -2,6 +2,7 @@ import { createApi, type NovelCliApi } from "./api.js";
 import { loadConfig, type CliConfig } from "./config.js";
 import { browseChapters } from "./flows/chapters.js";
 import { runAutoDirectorFlow } from "./flows/director.js";
+import { reviseOutlineFlow } from "./flows/outline.js";
 import {
   resumeDirectorActions,
   showDirectorProgress,
@@ -55,6 +56,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
       { value: "setup", label: "检查 / 配置创作环境", hint: "模型与 API Key" },
       { value: "novel", label: "小说项目", hint: "新建、选择当前小说" },
       { value: "director", label: "启动自动导演", hint: "输入灵感 → 选方案 → 继续开书" },
+      { value: "outline", label: "修改故事规划", hint: "看大纲 + 一句话让 AI 改" },
       { value: "progress", label: "查看导演进度", hint: "阶段、关卡、书级状态" },
       { value: "resume", label: "继续 / 批准导演", hint: "发送 continue 或 approve_gate" },
       { value: "live", label: "订阅 AI 实况", hint: "看模型正在生成什么" },
@@ -73,6 +75,9 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
           break;
         case "director":
           await runAutoDirectorFlow(api, session, config.pollIntervalMs);
+          break;
+        case "outline":
+          await reviseOutlineFlow(api, session, config.pollIntervalMs);
           break;
         case "progress":
           await showDirectorProgress(api, session);

@@ -9,8 +9,10 @@ export async function waitForDirectorCommandResult<T>(
     pollIntervalMs: number;
     label?: string;
     maxAttempts?: number;
+    /** 有些命令成功时 result 为空（如校准步骤），仍应视为完成。 */
+    allowEmptyResult?: boolean;
   },
-): Promise<T> {
+): Promise<T | null> {
   const maxAttempts = options.maxAttempts ?? 120;
   const label = options.label ?? "任务执行中";
 
@@ -23,8 +25,13 @@ export async function waitForDirectorCommandResult<T>(
       printProgress(`${label}（${status}，第 ${attempt} 次检查）`);
     }
 
-    if (status === "succeeded" && payload?.result != null) {
-      return payload.result;
+    if (status === "succeeded") {
+      if (payload?.result != null) {
+        return payload.result;
+      }
+      if (options.allowEmptyResult) {
+        return null;
+      }
     }
     if (status === "failed" || status === "cancelled" || status === "stale") {
       throw new Error(payload?.errorMessage || `导演命令失败：${status}`);
