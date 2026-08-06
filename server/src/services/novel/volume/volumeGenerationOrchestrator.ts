@@ -61,8 +61,14 @@ import {
   MAX_VOLUME_COUNT,
   buildVolumeCountGuidance,
 } from "@ai-novel/shared/types/volumePlanning";
+import { getGenerationCount } from "../../settings/GenerationCountSettingsService";
 
 type StoryMacroPlanResult = Awaited<ReturnType<StoryMacroPlanService["getPlan"]>> | null;
+
+async function resolveMaxVolumeCount(): Promise<number> {
+  const configured = await getGenerationCount("maxVolumeCount");
+  return Math.min(MAX_VOLUME_COUNT, Math.max(1, configured));
+}
 
 export function resolveFixedRecommendedVolumeCount(
   guidance: Pick<VolumeCountGuidance, "userPreferredVolumeCount" | "respectedExistingVolumeCount">,
@@ -180,13 +186,14 @@ async function generateStrategy(params: {
   options: VolumeGenerateOptions;
 }): Promise<VolumePlanDocument> {
   const { document, novel, workspace, storyMacroPlan, options } = params;
+  const maxVolumeCount = await resolveMaxVolumeCount();
   const chapterBudget = deriveChapterBudget({ novel, workspace, options });
   const volumeCountGuidance = buildVolumeCountGuidance({
     chapterBudget,
     existingVolumeCount: workspace.volumes.length,
     respectExistingVolumeCount: options.respectExistingVolumeCount,
     userPreferredVolumeCount: options.userPreferredVolumeCount,
-    maxVolumeCount: MAX_VOLUME_COUNT,
+    maxVolumeCount,
   });
   const fixedRecommendedVolumeCount = resolveFixedRecommendedVolumeCount(volumeCountGuidance);
   await notifyVolumeGenerationPhase({
@@ -198,7 +205,7 @@ async function generateStrategy(params: {
   });
   const generated = await runStructuredPrompt({
     asset: createVolumeStrategyPrompt({
-      maxVolumeCount: MAX_VOLUME_COUNT,
+      maxVolumeCount,
       allowedVolumeCountRange: volumeCountGuidance.allowedVolumeCountRange,
       decisionVolumeCountRange: volumeCountGuidance.decisionVolumeCountRange,
       fixedRecommendedVolumeCount,
@@ -299,12 +306,13 @@ async function generateSkeleton(params: {
     throw new Error("当前卷战略审查为高风险，请先重新生成或修订卷战略，再生成卷骨架。");
   }
   const chapterBudget = deriveChapterBudget({ novel, workspace, options });
+  const maxVolumeCount = await resolveMaxVolumeCount();
   const volumeCountGuidance = buildVolumeCountGuidance({
     chapterBudget,
     existingVolumeCount: workspace.volumes.length,
     respectExistingVolumeCount: options.respectExistingVolumeCount,
     userPreferredVolumeCount: options.userPreferredVolumeCount,
-    maxVolumeCount: MAX_VOLUME_COUNT,
+    maxVolumeCount,
   });
   const targetVolumeCount = document.strategyPlan.recommendedVolumeCount;
   await notifyVolumeGenerationPhase({

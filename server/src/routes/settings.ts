@@ -43,6 +43,11 @@ import {
   MIN_STYLE_EXTRACTION_TIMEOUT_MS,
   saveStyleEngineRuntimeSettings,
 } from "../services/settings/StyleEngineRuntimeSettingsService";
+import {
+  getGenerationCountSettingsView,
+  saveGenerationCountSettings,
+} from "../services/settings/GenerationCountSettingsService";
+import { GENERATION_COUNT_FIELD_DESCRIPTORS } from "@ai-novel/shared/types/generationCounts";
 import { registerCustomProviderRoutes } from "./settings/customProviderRoutes";
 import { registerLLMSelectionRoutes } from "./settings/llmSelectionRoutes";
 
@@ -107,6 +112,15 @@ const styleEngineRuntimeSettingsSchema = z.object({
     .min(MIN_STYLE_EXTRACTION_TIMEOUT_MS)
     .max(MAX_STYLE_EXTRACTION_TIMEOUT_MS),
 });
+
+const generationCountSettingsSchema = z.object(
+  Object.fromEntries(
+    GENERATION_COUNT_FIELD_DESCRIPTORS.map((field) => [
+      field.key,
+      z.coerce.number().int().min(field.min).max(field.max).optional(),
+    ]),
+  ),
+);
 
 type APIKeyRecordLike = {
   provider: string;
@@ -299,6 +313,38 @@ router.put(
         success: true,
         data,
         message: "写法引擎运行设置保存成功。",
+      } satisfies ApiResponse<typeof data>);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.get("/generation-counts", async (_req, res, next) => {
+  try {
+    const data = await getGenerationCountSettingsView();
+    res.status(200).json({
+      success: true,
+      data,
+      message: "生成数量设置已加载。",
+    } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put(
+  "/generation-counts",
+  validate({ body: generationCountSettingsSchema }),
+  async (req, res, next) => {
+    try {
+      const data = await saveGenerationCountSettings(
+        req.body as z.infer<typeof generationCountSettingsSchema>,
+      );
+      res.status(200).json({
+        success: true,
+        data,
+        message: "生成数量设置已保存。",
       } satisfies ApiResponse<typeof data>);
     } catch (error) {
       next(error);

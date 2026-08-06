@@ -42,6 +42,7 @@ export interface WorldAxiomSuggestionPromptInput {
   templateDescription: string;
   description: string;
   blueprintPromptBlock: string;
+  count?: number;
 }
 
 export interface WorldInspirationConceptCardPromptInput {

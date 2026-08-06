@@ -1,7 +1,12 @@
 import { z } from "zod";
 import { worldStructuredDataSchema } from "../../../services/world/worldSchemas";
 
-export const worldAxiomSuggestionSchema = z.array(z.string().trim()).max(5);
+export const worldAxiomSuggestionSchema = z.array(z.string().trim()).max(12);
+
+export function createWorldAxiomSuggestionSchema(count: number) {
+  const safeCount = Math.max(1, Math.floor(count));
+  return z.array(z.string().trim().min(1)).length(safeCount);
+}
 
 export const worldConceptCardSchema = z.object({
   worldType: z.string().trim().min(1),

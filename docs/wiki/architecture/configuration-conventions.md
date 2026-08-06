@@ -109,10 +109,13 @@ embeddingConcurrency: asInt(process.env.EMBEDDING_CONCURRENCY, 4, 1, 16),
 - `server/src/services/settings/ragSettingKeys.ts`
 - `server/src/services/settings/RagSettingsService.ts`
 - `server/src/services/settings/RagRuntimeSettingsService.ts`
+- `server/src/services/settings/GenerationCountSettingsService.ts`
 - `server/src/routes/settings.ts`
 - `client/src/api/settings.ts`
 - `client/src/pages/knowledge/KnowledgePage.tsx`
 - `client/src/pages/knowledge/components/KnowledgeEmbeddingSettingsCard.tsx`
+- `client/src/pages/settings/components/GenerationCountSettingsCard.tsx`
+- 产品页：[生成数量设置](../product/generation-count-settings.md)
 
 ## 来源文档
 

@@ -22,6 +22,7 @@ import {
   directorCandidatePrompt,
 } from "../../../../prompting/prompts/novel/directorPlanning.prompts";
 import { titleGenerationService } from "../../../title/TitleGenerationService";
+import { getGenerationCount } from "../../../settings/GenerationCountSettingsService";
 import { isNearDuplicateTitle } from "../../../title/titleGeneration.shared";
 import type { NovelWorkflowService } from "../../workflow/NovelWorkflowService";
 import {
@@ -183,6 +184,7 @@ export class NovelDirectorCandidateStageService {
       DIRECTOR_PROGRESS.candidateDirectionBatch,
     );
 
+    const titleOptionsMax = await getGenerationCount("directorTitleOptionsMax");
     const parsed = await runStructuredPrompt({
       asset: directorCandidatePrompt,
       promptInput: {
@@ -192,6 +194,7 @@ export class NovelDirectorCandidateStageService {
         batches: context.batches,
         presets: context.presets,
         feedback: context.feedback,
+        titleOptionsMax,
       },
       contextBlocks: buildDirectorCandidateContextBlocks({
         idea: context.idea,
@@ -415,6 +418,7 @@ export class NovelDirectorCandidateStageService {
       DIRECTOR_PROGRESS.candidateDirectionBatch,
     );
 
+    const titleOptionsMax = await getGenerationCount("directorTitleOptionsMax");
     const parsed = await runStructuredPrompt({
       asset: directorCandidatePatchPrompt,
       promptInput: {
@@ -424,6 +428,7 @@ export class NovelDirectorCandidateStageService {
         batches: input.previousBatches,
         presets: input.presets ?? [],
         feedback: input.feedback,
+        titleOptionsMax,
       },
       contextBlocks: buildDirectorCandidateContextBlocks({
         idea: input.idea,

@@ -10,9 +10,8 @@ import type {
 import { prisma } from "../../../db/prisma";
 import { runStructuredPrompt } from "../../../prompting/core/promptRunner";
 import { buildSupplementalCharacterContextBlocks } from "../../../prompting/prompts/novel/characterPreparation.contextBlocks";
-import {
-  supplementalCharacterPrompt,
-} from "../../../prompting/prompts/novel/characterPreparation.prompts";
+import { supplementalCharacterPrompt } from "../../../prompting/prompts/novel/characterPreparation.prompts";
+import { getGenerationCount } from "../../settings/GenerationCountSettingsService";
 import { NovelContextService } from "../NovelContextService";
 import { CharacterDynamicsService } from "../dynamics/CharacterDynamicsService";
 import {
@@ -223,9 +222,10 @@ export class CharacterPreparationSupplementalService {
         (relation) => anchorIds.includes(relation.sourceCharacterId) || anchorIds.includes(relation.targetCharacterId),
       )
       : novel.characterRelations.slice(0, 12);
+    const defaultCandidateCount = await getGenerationCount("characterCandidateDefaultCount");
     const targetCountText = typeof options.count === "number"
       ? `本次必须生成 ${options.count} 个候选角色。`
-      : "如果用户没有指定数量，请根据当前角色网络的缺口，自行判断更适合生成 1 个、2 个还是 3 个候选，并把建议数量写入 recommendedCount。";
+      : `如果用户没有指定数量，请根据当前角色网络的缺口，自行判断更适合生成 1 个到 ${defaultCandidateCount} 个候选，并把建议数量写入 recommendedCount。`;
     const contextBlocks = buildSupplementalCharacterContextBlocks({
       projectTitle: novel.title,
       modeLabel: `${mode}（${SUPPLEMENTAL_MODE_PROMPT_LABELS[mode]}）`,

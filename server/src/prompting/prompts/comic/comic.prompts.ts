@@ -133,7 +133,7 @@ const panelScriptSchema = z.object({
 
 export const comicPanelScriptOutputSchema = z.object({
   // 先识别本话场景（场景圣经），再分格
-  scenes: z.array(sceneSchema).max(8).default([]),
+  scenes: z.array(sceneSchema).max(16).default([]),
   panels: z.array(panelScriptSchema).min(10).max(80),
 });
 
@@ -167,6 +167,8 @@ export interface ComicPanelScriptPromptInput {
   /** 用户本次补充的分格要求，只能影响表达偏好，不得覆盖结构化输出规则 */
   scriptPromptInstruction?: string;
   targetPanelCount?: number;
+  /** 本话最多识别几个场景 */
+  sceneMax?: number;
 }
 
 export const comicPanelScriptPrompt: PromptAsset<
@@ -182,6 +184,7 @@ export const comicPanelScriptPrompt: PromptAsset<
   outputSchema: comicPanelScriptOutputSchema,
   render(input) {
     const panelTarget = input.targetPanelCount ?? 45;
+    const sceneMax = Math.max(3, Math.min(16, input.sceneMax ?? 8));
     const characterList = input.characters
       .map((c) => `- ${c.name}：${c.visualAnchor ?? "（暂无视觉描述）"}`)
       .join("\n");
@@ -232,7 +235,7 @@ export const comicPanelScriptPrompt: PromptAsset<
         `你是资深漫画分镜师，专注竖屏条漫/漫剧（webtoon 形态）。
 职责：先识别本话场景（场景圣经），再将大纲拆分为 ${panelTarget} 格左右的逐格分镜脚本。
 
-【第一步：识别场景 scenes】（最多 8 个）
+【第一步：识别场景 scenes】（最多 ${sceneMax} 个）
 - 每个场景给出：name（地点名）、sceneType(interior/exterior/landscape/abstract/other)、palette(主色板)、keyElements(标志物/家具/地形)，可选 materials(材质)/ambiance(光照氛围)/layout(空间结构)
 - 连续空间（如"竹林外围→竹林深处"）尽量归为同一场景，避免每格一个场景导致碎片化
 - 若提供了「项目已有场景」，本话出现同一地点时必须**沿用完全相同的 name**，不要新建近义名

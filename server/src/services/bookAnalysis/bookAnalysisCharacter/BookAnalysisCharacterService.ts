@@ -18,6 +18,7 @@ import {
   bookAnalysisCharacterProfilePrompt,
 } from "../../../prompting/prompts/bookAnalysis/bookAnalysisCharacter.prompts";
 import { BookAnalysisBudgetGuard } from "../caching/bookAnalysis.budget";
+import { getGenerationCount } from "../../settings/GenerationCountSettingsService";
 import { BookAnalysisSourceCacheService } from "../caching/bookAnalysis.cache";
 import {
   getEffectiveContent,
@@ -204,13 +205,14 @@ export class BookAnalysisCharacterService {
       where: { analysisId },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
+    const defaultLimit = await getGenerationCount("bookAnalysisCharacterMax");
     const result = await this.promptRunner({
       asset: bookAnalysisCharacterIdentifyPrompt,
       promptInput: {
         characterSystemContext: context.characterSystemContext,
         notesText: context.notesText,
         existingCharacters: existingCharacters.map((item) => item.name),
-        limit: Math.min(MAX_IDENTIFIED_CANDIDATES, Math.max(1, input.limit ?? MAX_IDENTIFIED_CANDIDATES)),
+        limit: Math.min(MAX_IDENTIFIED_CANDIDATES, Math.max(1, input.limit ?? defaultLimit)),
       },
       options: {
         provider: context.provider,

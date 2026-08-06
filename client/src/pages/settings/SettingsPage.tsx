@@ -28,6 +28,7 @@ import HumanRelaySettingsCard from "./components/HumanRelaySettingsCard";
 import SettingsReadinessCard, { buildSettingsReadinessItems } from "./components/SettingsReadinessCard";
 import SettingsSectionGroup from "./components/SettingsSectionGroup";
 import StyleEngineRuntimeSettingsCard from "./components/StyleEngineRuntimeSettingsCard";
+import GenerationCountSettingsCard from "./components/GenerationCountSettingsCard";
 import SettingsActionResult from "./SettingsActionResult";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
 
@@ -506,6 +507,7 @@ export default function SettingsPage() {
       >
         <SettingsNavigationCards mode="knowledge" />
         <StyleEngineRuntimeSettingsCard />
+        <GenerationCountSettingsCard />
       </SettingsSectionGroup>
 
       <SettingsSectionGroup

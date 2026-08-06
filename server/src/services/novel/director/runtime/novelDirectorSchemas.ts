@@ -94,7 +94,7 @@ export const directorCandidateSchema = z.object({
     style: titleStyleSchema,
     angle: z.string().trim().max(20).nullable().optional(),
     reason: z.string().trim().max(72).nullable().optional(),
-  })).max(4).optional().default([]),
+  })).max(8).optional().default([]),
   logline: nonEmptyString,
   positioning: nonEmptyString,
   sellingPoint: nonEmptyString,

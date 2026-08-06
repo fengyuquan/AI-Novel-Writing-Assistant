@@ -3,7 +3,8 @@ import type {
   DirectorIdeaInspirationsResponse,
 } from "@ai-novel/shared/types/novelDirector";
 import { runStructuredPrompt } from "../../../prompting/core/promptRunner";
-import { directorIdeaInspirationPrompt } from "../../../prompting/prompts/novel/ideaInspiration.prompts";
+import { createDirectorIdeaInspirationPrompt } from "../../../prompting/prompts/novel/ideaInspiration.prompts";
+import { getGenerationCount } from "../../settings/GenerationCountSettingsService";
 import { buildBookFramingSummary } from "../bookFraming";
 
 function compactText(value: string | null | undefined): string {
@@ -57,10 +58,12 @@ function buildContextSummary(input: DirectorIdeaInspirationRequest): string {
 
 export class NovelDirectorIdeaInspirationService {
   async generate(input: DirectorIdeaInspirationRequest): Promise<DirectorIdeaInspirationsResponse> {
+    const count = await getGenerationCount("ideaInspirationCount");
     const result = await runStructuredPrompt({
-      asset: directorIdeaInspirationPrompt,
+      asset: createDirectorIdeaInspirationPrompt(count),
       promptInput: {
         contextSummary: buildContextSummary(input),
+        count,
       },
       options: {
         provider: input.provider,

@@ -9,6 +9,10 @@ import type {
   ModelRouteStructuredResponseFormat,
   ModelRouteTaskType,
 } from "@ai-novel/shared/types/novel";
+import type {
+  GenerationCountSettingsInput,
+  GenerationCountSettingsView,
+} from "@ai-novel/shared/types/generationCounts";
 import { apiClient } from "./client";
 
 export type EmbeddingProvider = LLMProvider;
@@ -292,6 +296,19 @@ export async function getRagEmbeddingModels(provider: EmbeddingProvider) {
 
 export async function getStyleEngineRuntimeSettings() {
   const { data } = await apiClient.get<ApiResponse<StyleEngineRuntimeSettingsStatus>>("/settings/style-engine-runtime");
+  return data;
+}
+
+export async function getGenerationCountSettings() {
+  const { data } = await apiClient.get<ApiResponse<GenerationCountSettingsView>>("/settings/generation-counts");
+  return data;
+}
+
+export async function saveGenerationCountSettings(payload: GenerationCountSettingsInput) {
+  const { data } = await apiClient.put<ApiResponse<GenerationCountSettingsView>>(
+    "/settings/generation-counts",
+    payload,
+  );
   return data;
 }
 

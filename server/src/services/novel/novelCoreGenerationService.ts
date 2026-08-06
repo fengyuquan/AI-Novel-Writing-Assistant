@@ -15,6 +15,7 @@ import {
   novelStructuredOutlineRepairPrompt,
 } from "../../prompting/prompts/novel/coreGeneration.prompts";
 import { novelReferenceService } from "./NovelReferenceService";
+import { getGenerationCount } from "../settings/GenerationCountSettingsService";
 import {
   parseStrictStructuredOutline,
   stringifyStructuredOutline,
@@ -25,7 +26,6 @@ import { WorldContextGateway, type WorldContextPurpose } from "./worldContext/Wo
 import { normalizeNovelBiblePayload } from "./novelBiblePersistence";
 import {
   ChapterGenerateOptions,
-  DEFAULT_ESTIMATED_CHAPTER_COUNT,
   GenerateBeatOptions,
   HookGenerateOptions,
   LLMGenerateOptions,
@@ -169,9 +169,10 @@ export class NovelCoreGenerationService {
         .map((character) => `- ${character.name}（${character.role}）${character.personality ? `：${character.personality.slice(0, 80)}` : ""}`)
         .join("\n")
       : "暂无";
+    const defaultChapterCount = await getGenerationCount("estimatedChapterDefault");
     const totalChapters = options.totalChapters
       ?? novel.estimatedChapterCount
-      ?? DEFAULT_ESTIMATED_CHAPTER_COUNT;
+      ?? defaultChapterCount;
 
     const streamed = await streamTextPrompt({
       asset: novelStructuredOutlinePrompt,
@@ -370,9 +371,10 @@ export class NovelCoreGenerationService {
       novelReferenceService.buildReferenceForStage(novelId, "beats"),
     ]);
 
+    const defaultChapterCount = await getGenerationCount("estimatedChapterDefault");
     const targetChapters = options.targetChapters
       ?? Math.max(
-        novel.estimatedChapterCount ?? DEFAULT_ESTIMATED_CHAPTER_COUNT,
+        novel.estimatedChapterCount ?? defaultChapterCount,
         novel.chapters.length || 0,
         1,
       );

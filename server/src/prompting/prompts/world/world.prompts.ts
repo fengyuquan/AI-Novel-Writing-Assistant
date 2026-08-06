@@ -20,6 +20,7 @@ import {
 } from "./world.promptTypes";
 import {
   worldAxiomSuggestionSchema,
+  createWorldAxiomSuggestionSchema,
   worldConceptCardSchema,
   worldConsistencyIssuesSchema,
   worldDeepeningQuestionsSchema,
@@ -1238,59 +1239,66 @@ export const worldStructureSectionPrompt: PromptAsset<
   postValidate: (output, input) => normalizeWorldStructureSectionPayload(output, input),
 };
 
-export const worldAxiomSuggestionPrompt: PromptAsset<
+export function createWorldAxiomSuggestionPrompt(
+  count = 5,
+): PromptAsset<
   WorldAxiomSuggestionPromptInput,
-  z.infer<typeof worldAxiomSuggestionSchema>
-> = {
-  id: "world.axioms.suggest",
-  version: "v1",
-  taskType: "planner",
-  mode: "structured",
-  language: "zh",
-  contextPolicy: {
-    maxTokensBudget: 0,
-  },
-  outputSchema: worldAxiomSuggestionSchema,
-  render: (input) => [
-    new SystemMessage([
-      "你是世界公理设计器。",
-      "你的任务是为当前世界生成 5 条“核心公理”，作为后续世界构建、设定补全和剧情展开的最高约束层。",
-      "",
-      "只输出一个合法 JSON 数组，不要输出 Markdown、解释、注释、代码块或额外文本。",
-      "数组元素必须全部是字符串，且全部使用简体中文。",
-      "必须精确输出 5 条，不能多也不能少。",
-      "",
-      "全局硬规则：",
-      "1. 每条公理都必须是“能约束后续生成”的硬规则，而不是口号、主题句或世界简介。",
-      "2. 公理必须能直接影响后续世界搭建，例如限制代价、规定秩序、定义冲突来源、划定边界条件、明确默认后果。",
-      "3. 只能基于输入中的世界类型、模板说明、世界摘要和蓝图约束来生成，不得脱离这些信息另起一套世界。",
-      "4. 如果信息不足，优先生成低风险、通用但有约束力的公理，不要空泛发散。",
-      "",
-      "公理设计要求：",
-      "1. 至少应覆盖以下关键约束中的大部分：代价、秩序、冲突来源、边界条件、默认后果、资源约束、权力限制、公开与隐秘规则。",
-      "2. 每条公理都应回答“这个世界默认怎么运作，违反后会怎样，哪些事不能无代价发生”。",
-      "3. 公理必须具体，例如可以约束力量使用、身份流动、资源获取、组织秩序、信息传播、社会压迫、越界代价等。",
-      "4. 不要写成‘世界很残酷’‘人心复杂’‘强者为尊’这类空泛判断，除非它被具体化为可执行约束。",
-      "5. 5 条公理之间尽量分工明确，不要换说法重复同一个意思。",
-      "",
-      "表达要求：",
-      "1. 每条公理尽量写成一句完整、清楚、可直接引用的约束句。",
-      "2. 不要写得太长，但必须足够具体，能拿去约束后续世界生成。",
-      "3. 语言要像世界设定中的底层规则，而不是宣传文案或文学抒情。",
-      "",
-      "质量要求：",
-      "1. 看完这 5 条，应该能大致理解这个世界的运行底线。",
-      "2. 这些公理要能帮助后续自动生成避免跑偏、避免设定失真、避免无代价乱开。",
-      "3. 不要生成互相冲突的公理。",
-    ].join("\n")),
-    new HumanMessage([
-      `世界名=${input.worldName}`,
-      `世界类型=${input.worldType}`,
-      `模板=${input.templateName}`,
-      `模板说明=${input.templateDescription}`,
-      `世界摘要=${input.description}`,
-      "蓝图约束：",
-      input.blueprintPromptBlock,
-    ].join("\n")),
-  ],
-};
+  string[]
+> {
+  const safeCount = Math.max(1, Math.floor(count));
+  return {
+    id: "world.axioms.suggest",
+    version: "v2",
+    taskType: "planner",
+    mode: "structured",
+    language: "zh",
+    contextPolicy: {
+      maxTokensBudget: 0,
+    },
+    outputSchema: createWorldAxiomSuggestionSchema(safeCount),
+    render: (input) => [
+      new SystemMessage([
+        "你是世界公理设计器。",
+        `你的任务是为当前世界生成 ${safeCount} 条“核心公理”，作为后续世界构建、设定补全和剧情展开的最高约束层。`,
+        "",
+        "只输出一个合法 JSON 数组，不要输出 Markdown、解释、注释、代码块或额外文本。",
+        "数组元素必须全部是字符串，且全部使用简体中文。",
+        `必须精确输出 ${safeCount} 条，不能多也不能少。`,
+        "",
+        "全局硬规则：",
+        "1. 每条公理都必须是“能约束后续生成”的硬规则，而不是口号、主题句或世界简介。",
+        "2. 公理必须能直接影响后续世界搭建，例如限制代价、规定秩序、定义冲突来源、划定边界条件、明确默认后果。",
+        "3. 只能基于输入中的世界类型、模板说明、世界摘要和蓝图约束来生成，不得脱离这些信息另起一套世界。",
+        "4. 如果信息不足，优先生成低风险、通用但有约束力的公理，不要空泛发散。",
+        "",
+        "公理设计要求：",
+        "1. 至少应覆盖以下关键约束中的大部分：代价、秩序、冲突来源、边界条件、默认后果、资源约束、权力限制、公开与隐秘规则。",
+        "2. 每条公理都应回答“这个世界默认怎么运作，违反后会怎样，哪些事不能无代价发生”。",
+        "3. 公理必须具体，例如可以约束力量使用、身份流动、资源获取、组织秩序、信息传播、社会压迫、越界代价等。",
+        "4. 不要写成‘世界很残酷’‘人心复杂’‘强者为尊’这类空泛判断，除非它被具体化为可执行约束。",
+        `5. ${safeCount} 条公理之间尽量分工明确，不要换说法重复同一个意思。`,
+        "",
+        "表达要求：",
+        "1. 每条公理尽量写成一句完整、清楚、可直接引用的约束句。",
+        "2. 不要写得太长，但必须足够具体，能拿去约束后续世界生成。",
+        "3. 语言要像世界设定中的底层规则，而不是宣传文案或文学抒情。",
+        "",
+        "质量要求：",
+        `1. 看完这 ${safeCount} 条，应该能大致理解这个世界的运行底线。`,
+        "2. 这些公理要能帮助后续自动生成避免跑偏、避免设定失真、避免无代价乱开。",
+        "3. 不要生成互相冲突的公理。",
+      ].join("\n")),
+      new HumanMessage([
+        `世界名=${input.worldName}`,
+        `世界类型=${input.worldType}`,
+        `模板=${input.templateName}`,
+        `模板说明=${input.templateDescription}`,
+        `世界摘要=${input.description}`,
+        "蓝图约束：",
+        input.blueprintPromptBlock,
+      ].join("\n")),
+    ],
+  };
+}
+
+export const worldAxiomSuggestionPrompt = createWorldAxiomSuggestionPrompt(5);

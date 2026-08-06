@@ -3,7 +3,6 @@ import {
   DEFAULT_NOVEL_COVER_STYLE_PRESET,
 } from "@ai-novel/shared/imagePrompt";
 import {
-  DEFAULT_NOVEL_COVER_IMAGE_COUNT,
   DEFAULT_NOVEL_COVER_IMAGE_SIZE,
   type ImageAsset,
   type ImageGenerationTask,
@@ -11,6 +10,7 @@ import {
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { getGenerationCount } from "../settings/GenerationCountSettingsService";
 import {
   buildNovelCoverTaskPrompt,
   loadNovelCoverNovel,
@@ -277,7 +277,7 @@ export class ImageGenerationService {
         stylePreset: input.stylePreset?.trim() || DEFAULT_NOVEL_COVER_STYLE_PRESET,
         referenceImageAssetIdsJson: JSON.stringify(normalizeReferenceImageAssetIds(input.referenceImageAssetIds)),
         size: input.size ?? DEFAULT_NOVEL_COVER_IMAGE_SIZE,
-        imageCount: input.count ?? DEFAULT_NOVEL_COVER_IMAGE_COUNT,
+        imageCount: input.count ?? await getGenerationCount("coverImageCount"),
         seed: input.seed,
         status: "queued",
         maxRetries: input.maxRetries ?? 2,

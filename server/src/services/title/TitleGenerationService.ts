@@ -7,7 +7,6 @@ import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { titleGenerationPrompt } from "../../prompting/prompts/helper/titleGeneration.prompt";
 import {
   collectUniqueSuggestions,
-  DEFAULT_TITLE_COUNT,
   detectTitleSurfaceFrame,
   hasEnoughStructuralVariety,
   hasEnoughStyleVariety,
@@ -15,6 +14,7 @@ import {
   toTrimmedString,
   type TitlePromptContext,
 } from "./titleGeneration.shared";
+import { getGenerationCount } from "../settings/GenerationCountSettingsService";
 
 export interface TitleGenerationLLMOptions {
   provider?: LLMProvider;
@@ -117,7 +117,8 @@ export class TitleGenerationService {
     const mode = input.mode;
     const brief = toTrimmedString(input.brief);
     const referenceTitle = toTrimmedString(input.referenceTitle);
-    const count = normalizeRequestedCount(input.count, DEFAULT_TITLE_COUNT);
+    const defaultCount = await getGenerationCount("titleCandidateCount");
+    const count = normalizeRequestedCount(input.count, defaultCount);
 
     if (mode === "brief" && !brief) {
       throw new Error("自由标题工坊需要提供创作简报。");
@@ -178,7 +179,7 @@ export class TitleGenerationService {
 
     return this.runGeneration({
       mode: "novel",
-      count: normalizeRequestedCount(input.count, DEFAULT_TITLE_COUNT),
+      count: normalizeRequestedCount(input.count, await getGenerationCount("titleCandidateCount")),
       brief,
       referenceTitle: "",
       novelTitle: novel.title,
@@ -195,7 +196,10 @@ export class TitleGenerationService {
   ): Promise<{ titles: TitleFactorySuggestion[] }> {
     const provider = llmOptions.provider ?? "deepseek";
     const forceJson = await shouldForceTitleJsonOutput(llmOptions);
-    const count = normalizeRequestedCount(promptContext.count, DEFAULT_TITLE_COUNT);
+    const count = normalizeRequestedCount(
+      promptContext.count,
+      await getGenerationCount("titleCandidateCount"),
+    );
 
     let lastError: unknown;
     let bestEffortTitles: TitleFactorySuggestion[] = [];

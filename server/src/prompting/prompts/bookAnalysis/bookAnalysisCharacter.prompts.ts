@@ -27,6 +27,7 @@ export interface BookAnalysisCharacterGeneratePromptInput {
   characterNames: string[];
   characterSystemContext: string;
   notesText: string;
+  maxCharacterCount?: number;
 }
 
 export interface BookAnalysisCharacterProfilePromptInput {
@@ -213,7 +214,7 @@ export const bookAnalysisCharacterGeneratePrompt: PromptAsset<
       "3. arcs 用于角色阶段变化；stageLabel 必须具体。chapterIndex 是从 0 开始的章节索引，只有能确认是第 1 章时才可填 0；章节未知时必须省略，绝不能用 0 代表未知。",
       "4. scenes 用 sceneLabel 字符串描述高光场景或典型表现，不要创建正式场景实体。",
       "5. evidence.excerpt 应尽量贴近原文摘录或 notes 里的明确信息。",
-      "6. 如果指定了角色名，只生成这些角色；未指定时最多生成 6 个最关键角色。",
+      `6. 如果指定了角色名，只生成这些角色；未指定时最多生成 ${Math.max(1, Math.min(12, input.maxCharacterCount ?? 6))} 个最关键角色。`,
     ].join("\n")),
     new HumanMessage([
       `生成深度：${input.generationDepth}`,

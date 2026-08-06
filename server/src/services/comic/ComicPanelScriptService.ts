@@ -2,6 +2,7 @@ import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { comicPanelScriptPrompt } from "../../prompting/prompts/comic/comic.prompts";
+import { getGenerationCount } from "../settings/GenerationCountSettingsService";
 import { adaptationSourceRegistry } from "../adaptation/source/SourceContentPort";
 import { comicFactService } from "./ComicFactService";
 
@@ -136,6 +137,7 @@ export class ComicPanelScriptService {
         densityMode,
         scriptPromptInstruction: input.scriptPromptInstruction,
         targetPanelCount,
+        sceneMax: await getGenerationCount("comicSceneMax"),
       },
       options: { temperature: 0.55, provider },
     });

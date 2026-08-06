@@ -9,7 +9,8 @@ import type {
 } from "@ai-novel/shared/types/world";
 import { prisma } from "../../db/prisma";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
-import { worldAxiomSuggestionPrompt } from "../../prompting/prompts/world/world.prompts";
+import { createWorldAxiomSuggestionPrompt } from "../../prompting/prompts/world/world.prompts";
+import { getGenerationCount } from "../settings/GenerationCountSettingsService";
 import { getTemplateByKey, LAYER_FIELD_MAP, WORLD_LAYER_ORDER, WORLD_TEMPLATES } from "./worldTemplates";
 import { buildConsistencySummary, localizeConsistencyIssue } from "./worldConsistency";
 import {
@@ -346,8 +347,9 @@ export class WorldService {
 
     const template = getTemplateByKey(world.templateKey);
     const blueprintPromptBlock = buildWorldBlueprintPromptBlock(world);
+    const count = await getGenerationCount("worldAxiomCount");
     const result = await runStructuredPrompt({
-      asset: worldAxiomSuggestionPrompt,
+      asset: createWorldAxiomSuggestionPrompt(count),
       promptInput: {
         worldName: world.name,
         worldType: world.worldType ?? "未知",
@@ -355,6 +357,7 @@ export class WorldService {
         templateDescription: template.description,
         description: world.description ?? "无",
         blueprintPromptBlock,
+        count,
       },
       options: {
         provider: options.provider ?? "deepseek",
@@ -371,7 +374,7 @@ export class WorldService {
         "政治秩序受资源流动约束。",
         "核心冲突必须源于世界规则而非偶然。",
         "任何角色都不能直接违背基础公理。",
-      ];
+      ].slice(0, count);
   }
 
   async updateAxioms(worldId: string, axioms: string[]) {
