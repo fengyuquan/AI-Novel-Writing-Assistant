@@ -16,6 +16,7 @@
     "dev:server": "pnpm --filter @ai-novel/server dev",
     "dev:server:log": "node scripts/run-with-log.cjs --name server -- pnpm --filter @ai-novel/server dev",
     "dev:client": "pnpm --filter @ai-novel/client dev",
+    "dev:cli": "pnpm --filter @ai-novel/cli start",
     "dev:site": "pnpm --filter @ai-novel/site dev",
     "dev:client:wait": "node scripts/wait-for-port.cjs --port 3000 && pnpm dev:client",
     "prepare:desktop-runtime": "pnpm --filter @ai-novel/desktop prepare:runtime",
