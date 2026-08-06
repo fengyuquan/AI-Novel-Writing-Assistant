@@ -517,9 +517,10 @@ export default function SettingsPage() {
 
       <SettingsSectionGroup
         title="系统维护"
-        description="桌面更新和旧数据导入放在这里，避免打断日常创作配置。"
+        description="桌面更新、旧数据导入和提示词排查放在这里，避免打断日常创作配置。"
         status="maintenance"
       >
+        <SettingsNavigationCards mode="promptLogs" />
         <SettingsMaintenanceSection />
       </SettingsSectionGroup>
 

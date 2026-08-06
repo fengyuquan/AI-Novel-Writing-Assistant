@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
 
 export default function SettingsNavigationCards(props: {
-  mode?: "all" | "routes" | "knowledge";
+  mode?: "all" | "routes" | "knowledge" | "promptLogs";
 }) {
   const { mode = "all" } = props;
   const ragSettingsQuery = useQuery({
@@ -78,7 +78,7 @@ export default function SettingsNavigationCards(props: {
         </Card>
       ) : null}
 
-      {mode === "all" ? (
+      {mode === "all" || mode === "promptLogs" ? (
         <Card className="min-w-0 overflow-hidden">
           <CardHeader>
             <CardTitle>提示词调用记录</CardTitle>
