@@ -1,5 +1,6 @@
 import { unwrapNovel, unwrapNovels, type NovelCliApi } from "../api.js";
 import type { CliSession } from "../session.js";
+import { loadCliProfile } from "../profile.js";
 import { ask, choose, confirm } from "../lib/prompt.js";
 import {
   printInfo,
@@ -74,10 +75,22 @@ async function createNovelFlow(api: NovelCliApi, session: CliSession): Promise<v
     { value: "professional", label: "专业创作", hint: "进入完整工作台式流程" },
   ]);
 
+  const outlineFirst = loadCliProfile().outlineFirst;
+  const applyTargets = await confirm(
+    `套用已保存的大纲优先设定？（${outlineFirst.estimatedChapterCount} 章 · 每章 ≥ ${outlineFirst.minChapterWords} 字）`,
+    outlineFirst.preferOutlineFirst,
+  );
+
   const created = (await api.createNovel({
     title: title.trim(),
     description: description.trim() || undefined,
     creationExperience: experience,
+    ...(applyTargets
+      ? {
+        estimatedChapterCount: outlineFirst.estimatedChapterCount,
+        defaultChapterLength: outlineFirst.minChapterWords,
+      }
+      : {}),
   })).data;
 
   if (!created?.id) {
@@ -92,6 +105,12 @@ async function createNovelFlow(api: NovelCliApi, session: CliSession): Promise<v
   printKeyValues([
     ["ID", created.id],
     ["创作方式", experience === "simple" ? "简易创作" : "专业创作"],
+    ...(applyTargets
+      ? [
+        ["期望章数", String(outlineFirst.estimatedChapterCount)],
+        ["每章字数不少于", String(outlineFirst.minChapterWords)],
+      ] as Array<[string, string]>
+      : []),
   ]);
 }
 

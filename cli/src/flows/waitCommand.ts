@@ -62,21 +62,34 @@ export async function waitUntilDirectorSettled(
   api: NovelCliApi,
   taskId: string,
   pollIntervalMs: number,
+  options?: {
+    maxAttempts?: number;
+    /** 到达这些检查点之一即可结束等待 */
+    stopCheckpointTypes?: string[];
+  },
 ): Promise<void> {
-  for (let attempt = 1; attempt <= 90; attempt += 1) {
+  const maxAttempts = options?.maxAttempts ?? 90;
+  const stopCheckpoints = new Set(options?.stopCheckpointTypes ?? []);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const response = await api.getDirectorTaskSnapshot(taskId);
     const snapshot = response.data?.snapshot;
     const dashboard = snapshot?.dashboardView;
     const mode = dashboard?.mode ?? "idle";
+    const checkpoint = snapshot?.task?.checkpointType ?? null;
     const headline = dashboard?.headline || snapshot?.displayState?.headline || snapshot?.activeStep?.label || "进行中";
     const percent = dashboard?.progressPercent;
 
     printProgress(
       `导演进度：${headline}`
       + (typeof percent === "number" ? `（${Math.round(percent)}%）` : "")
+      + (checkpoint ? ` · ${checkpoint}` : "")
       + ` [${mode}]`,
     );
 
+    if (checkpoint && stopCheckpoints.has(checkpoint)) {
+      return;
+    }
     if (mode === "waiting_user" || mode === "failed" || mode === "completed" || mode === "idle") {
       return;
     }

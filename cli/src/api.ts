@@ -75,7 +75,14 @@ export function createApi(client: ApiClient) {
       return client.get<{ novel?: Novel } & Novel>(`/novels/${id}`);
     },
 
-    createNovel(payload: { title: string; description?: string; projectMode?: string; creationExperience?: string }) {
+    createNovel(payload: {
+      title: string;
+      description?: string;
+      projectMode?: string;
+      creationExperience?: string;
+      estimatedChapterCount?: number;
+      defaultChapterLength?: number;
+    }) {
       return client.post<Novel>("/novels", payload);
     },
 
@@ -85,10 +92,18 @@ export function createApi(client: ApiClient) {
       workflowTaskId?: string;
       provider?: string;
       model?: string;
+      estimatedChapterCount?: number;
+      defaultChapterLength?: number;
     }) {
       return client.post<DirectorCommandAcceptedResponse>("/novels/director/tasks", {
         taskType: "generate_candidates",
         payload,
+      });
+    },
+
+    exportNovelRaw(novelId: string, format: "markdown" | "json" | "txt" = "markdown", scope = "chapter") {
+      return client.requestRaw(`/novels/${novelId}/export?format=${encodeURIComponent(format)}&scope=${encodeURIComponent(scope)}`, {
+        method: "GET",
       });
     },
 
@@ -136,7 +151,7 @@ export function createApi(client: ApiClient) {
       return client.post<OutlineOptimizePreview>(`/novels/${novelId}/outline/optimize-preview`, payload);
     },
 
-    updateNovel(novelId: string, payload: Partial<Pick<Novel, "outline" | "structuredOutline" | "title" | "description">>) {
+    updateNovel(novelId: string, payload: Partial<Pick<Novel, "outline" | "structuredOutline" | "title" | "description" | "estimatedChapterCount" | "defaultChapterLength">>) {
       return client.put<Novel>(`/novels/${novelId}`, payload);
     },
 
