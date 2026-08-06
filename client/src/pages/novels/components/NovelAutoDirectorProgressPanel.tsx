@@ -374,7 +374,7 @@ export default function NovelAutoDirectorProgressPanel({
     ? (
       visualMode === "execution_failed"
         ? "候选方向生成链已中断，可以先查看执行详情，再决定是否重试。"
-        : "系统会先整理项目设定、对齐书级 framing，再生成两套书级方案和对应标题组。"
+        : "系统会先整理项目设定、对齐书级 framing，再生成五套书级方案和对应标题组。"
     )
     : (
       dashboardView?.description

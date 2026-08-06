@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  DIRECTOR_CANDIDATE_BATCH_COUNT,
   DIRECTOR_CANDIDATE_SETUP_STEPS,
   type DirectorCandidate,
   type DirectorCandidateBatch,
@@ -268,7 +269,7 @@ export class NovelDirectorCandidateStageService {
 
     const result = await this.generateBatch({
       idea: input.idea,
-      count: 2,
+      count: DIRECTOR_CANDIDATE_BATCH_COUNT,
       batches: [],
       presets: [],
       request: input,
@@ -337,7 +338,7 @@ export class NovelDirectorCandidateStageService {
 
     const result = await this.generateBatch({
       idea: input.idea,
-      count: 2,
+      count: DIRECTOR_CANDIDATE_BATCH_COUNT,
       batches: input.previousBatches,
       presets: input.presets ?? [],
       feedback: input.feedback,

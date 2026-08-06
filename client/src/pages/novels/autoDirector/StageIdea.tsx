@@ -100,7 +100,7 @@ export default function StageIdea({
           storageKey="auto-director-idea"
           title="一句话不需要写成完整大纲"
           description="写清主角、处境或最想看的冲突即可。题材、卖点和长篇推进方式会由 AI 在下一步整理。"
-          next="AI 生成两套差异明确的整书方向。"
+          next="AI 一次给出五套差异明确的整书方向，不满意时可输入意见再生成。"
         />
       </div>
 

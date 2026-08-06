@@ -26,6 +26,12 @@ Web API 只接收命令和返回轻量投影；Worker 负责执行重型生产�
 
 ## 当前规则
 
+### 书级方向候选批次
+
+- 每一轮 `generate_candidates` / `refine_candidates` 固定产出 `DIRECTOR_CANDIDATE_BATCH_COUNT`（当前为 5）套书级方向卡片，数量由 shared 常量与 structured schema 共同约束，禁止在阶段服务里再硬编码套数。
+- `refine_candidates` 必须携带 `previousBatches`；用户可用自然语言 `feedback`（可选预设）要求下一轮更贴近意图。网页端与 CLI 都走同一 command，不另开平行生成链路。
+- 本地质量或偏好不满意只能进入新一轮候选或单套 patch / 标题 refine；不得把“候选不满意”升级为整书 `replan_required`。
+
 ### 逐步协作与自动模式兼容
 
 `stage_review` 是现有自动导演链上的显式逐步协作策略，不是另一套生成管线。它复用相同的 StepModule、PolicyEngine、Artifact Ledger 和 asset-first recovery，但每次只执行一个可恢复步骤，随后写入 `step_review_required` 检查点。检查点 seed 必须保留当前 `stepId`、`nodeKey`、目标范围和完成时间，继续操作才允许进入下一个未完成步骤。

@@ -24,6 +24,7 @@ import {
 } from "../lib/print.js";
 import { requireNovel } from "./novels.js";
 import { printDirectorSnapshot } from "./progress.js";
+import { maybePickTitle, pickOrRefineCandidates } from "./candidates.js";
 import { waitForCandidateBatch, waitUntilDirectorSettled } from "./waitCommand.js";
 
 export async function outlineFirstMenu(
@@ -147,42 +148,28 @@ async function runOutlineFirstDirector(
     session.directorTaskId = result.workflowTaskId;
   }
 
-  const batch = result.batch;
-  printBlank();
-  printTitle(`候选方向 · ${batch.roundLabel || `第 ${batch.round} 轮`}`);
-  for (const [index, candidate] of batch.candidates.entries()) {
-    printBlank();
-    printInfo(`${index + 1}. ${candidate.workingTitle}`);
-    printKeyValues([
-      ["一句话", candidate.logline],
-      ["卖点", candidate.sellingPoint],
-      ["目标章数(候选)", String(candidate.targetChapterCount)],
+  const pick = await pickOrRefineCandidates({
+    api,
+    taskId: session.directorTaskId!,
+    idea: idea.trim(),
+    initialBatch: result.batch,
+    pollIntervalMs,
+    chooseTitle: "选择一套方案继续（将生成详细大纲，不写正文）",
+    refineExtras: {
+      estimatedChapterCount: profile.estimatedChapterCount,
+      defaultChapterLength: profile.minChapterWords,
+    },
+    extraCandidateRows: () => [
       ["将采用章数", String(profile.estimatedChapterCount)],
       ["每章字数", String(profile.minChapterWords)],
-    ]);
-  }
-
-  const selectedId = await choose(
-    "选择一套方案继续（将生成详细大纲，不写正文）",
-    [
-      ...batch.candidates.map((candidate) => ({
-        value: candidate.id,
-        label: candidate.workingTitle,
-        hint: candidate.logline.slice(0, 40),
-      })),
-      { value: "__cancel", label: "先不确认" },
     ],
-  );
-  if (selectedId === "__cancel") {
+  });
+
+  if (pick.action === "cancel") {
     return;
   }
 
-  const candidate = batch.candidates.find((item) => item.id === selectedId);
-  if (!candidate) {
-    printWarn("未找到选中的方案。");
-    return;
-  }
-
+  const { batch, candidate } = pick;
   const withTitle = await maybePickTitle(candidate);
   // 强制候选章数对齐用户设置，避免后续规划漂回 80 章
   const alignedCandidate: DirectorCandidate = {
@@ -425,38 +412,6 @@ function extractChapterOutlineDetail(chapter: Chapter): {
 function hasDetailedOutline(chapter: Chapter): boolean {
   const detail = extractChapterOutlineDetail(chapter);
   return detail.mustWrite.length > 0 && detail.mustNotWrite.length > 0;
-}
-
-async function maybePickTitle(candidate: DirectorCandidate): Promise<DirectorCandidate> {
-  const options = candidate.titleOptions ?? [];
-  if (options.length === 0) {
-    return candidate;
-  }
-  printBlank();
-  printInfo("这套方案还有书名候选：");
-  const title = await choose(
-    "选择书名（或保留当前工作标题）",
-    [
-      { value: candidate.workingTitle, label: candidate.workingTitle, hint: "当前工作标题" },
-      ...options.map((option) => ({
-        value: option.title,
-        label: option.title,
-        hint: option.reason?.slice(0, 36),
-      })),
-    ],
-  );
-  if (title === candidate.workingTitle) {
-    return candidate;
-  }
-  const selectedIndex = options.findIndex((item) => item.title === title);
-  const reordered = selectedIndex <= 0
-    ? options
-    : [options[selectedIndex]!, ...options.filter((_, index) => index !== selectedIndex)];
-  return {
-    ...candidate,
-    workingTitle: title,
-    titleOptions: reordered,
-  };
 }
 
 function splitLines(text: string): string[] {

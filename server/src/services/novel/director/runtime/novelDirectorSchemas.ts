@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  DIRECTOR_CANDIDATE_BATCH_COUNT,
   DIRECTOR_MAX_TARGET_CHAPTER_COUNT,
   DIRECTOR_MIN_TARGET_CHAPTER_COUNT,
 } from "@ai-novel/shared/types/novelDirector";
@@ -113,7 +114,7 @@ export const directorPersistedCandidateSchema = directorCandidateSchema.extend({
 });
 
 export const directorCandidateResponseSchema = z.object({
-  candidates: z.array(directorCandidateSchema).length(2),
+  candidates: z.array(directorCandidateSchema).length(DIRECTOR_CANDIDATE_BATCH_COUNT),
 });
 
 export const directorBookContractSchema = z.object({

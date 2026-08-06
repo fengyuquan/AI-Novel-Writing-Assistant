@@ -28,7 +28,7 @@ export default function StageModelRun({
         <div>
           <div className="text-2xl font-semibold tracking-normal text-foreground">确认模型与生产准备</div>
           <div className={`mt-2 max-w-2xl text-sm leading-6 text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
-            确认后，AI 会先给出两套整书方向，再自动完成开写前的角色和卷章准备。
+            确认后，AI 会先给出多套整书方向，再自动完成开写前的角色和卷章准备。
           </div>
         </div>
         <div className="rounded-full bg-muted/55 px-3 py-1 text-xs text-muted-foreground">
@@ -48,7 +48,7 @@ export default function StageModelRun({
             <div className="bg-background p-5">
               <Sparkles className="h-5 w-5 text-primary" />
               <div className="mt-3 text-sm font-semibold text-foreground">1. 选择整书方向</div>
-              <div className="mt-1 text-xs leading-5 text-muted-foreground">AI 生成两套差异明确的方向，由你二选一。</div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">AI 一次给出五套差异明确的方向，你可挑选或输入意见再生成。</div>
             </div>
             <div className="bg-background p-5">
               <BookOpen className="h-5 w-5 text-primary" />

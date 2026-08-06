@@ -128,7 +128,7 @@ export async function getFirstNovelOnboardingProjection(): Promise<FirstNovelOnb
   if (setup.readyForCreation) {
     currentMilestone = "idea_direction";
     headline = "用一句灵感开始第一本小说";
-    description = "不需要先写大纲，AI 会整理出两套完整方向供你选择。";
+    description = "不需要先写大纲，AI 会整理出多套完整方向供你选择。";
     reason = "先确认值得继续写的整书方向，比填写大量专业设定更重要。";
     primaryAction = {
       label: "让 AI 带我开始",
@@ -147,7 +147,7 @@ export async function getFirstNovelOnboardingProjection(): Promise<FirstNovelOnb
       headline = latestTask.checkpointType === "candidate_selection_required"
         ? "选择你最想读下去的方向"
         : "AI 正在准备整书方向";
-      description = latestTask.currentItemLabel ?? "方向完成后，你只需要从两套方案中选择一套。";
+      description = latestTask.currentItemLabel ?? "方向完成后，你只需要从多套方案中选择一套。";
       reason = "这个选择会确定主角、核心冲突和整本书的主要阅读期待。";
     } else if (latestTask.checkpointType === "production_experience_required") {
       currentMilestone = "production_choice";

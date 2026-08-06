@@ -16,6 +16,7 @@ import type {
   DirectorCandidate,
   DirectorCandidateBatch,
   DirectorConfirmRequest,
+  DirectorCorrectionPreset,
   DirectorStepCalibrationRequest,
 } from "@ai-novel/shared/types/novelDirector";
 import type {
@@ -97,6 +98,21 @@ export function createApi(client: ApiClient) {
     }) {
       return client.post<DirectorCommandAcceptedResponse>("/novels/director/tasks", {
         taskType: "generate_candidates",
+        payload,
+      });
+    },
+
+    refineDirectorCandidates(taskId: string, payload: {
+      idea: string;
+      previousBatches: DirectorCandidateBatch[];
+      feedback?: string;
+      presets?: DirectorCorrectionPreset[];
+      workflowTaskId?: string;
+      estimatedChapterCount?: number;
+      defaultChapterLength?: number;
+    }) {
+      return client.post<DirectorCommandAcceptedResponse>(`/novels/director/tasks/${taskId}/commands`, {
+        commandType: "refine_candidates",
         payload,
       });
     },
