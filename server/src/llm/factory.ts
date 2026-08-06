@@ -25,6 +25,7 @@ import {
   PROVIDERS,
   resolveProviderBaseUrl,
 } from "./providers";
+import { attachLLMHumanRelay } from "../platform/llm/humanRelay";
 
 interface LLMOptions {
   model?: string;
@@ -387,8 +388,10 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
     concurrencyLimit: resolved.concurrencyLimit,
     requestIntervalMs: resolved.requestIntervalMs,
   });
-  (limited as ChatOpenAIWithResolvedOptions)[RESOLVED_LLM_OPTIONS] = resolved;
-  return limited;
+  // Outermost: when enabled, wait for pasted external response without holding the provider rate-limit slot.
+  const relayed = attachLLMHumanRelay(limited, meta);
+  (relayed as ChatOpenAIWithResolvedOptions)[RESOLVED_LLM_OPTIONS] = resolved;
+  return relayed;
 }
 
 export async function getLLM(provider?: LLMProvider, options: LLMOptions = {}): Promise<ChatOpenAI> {

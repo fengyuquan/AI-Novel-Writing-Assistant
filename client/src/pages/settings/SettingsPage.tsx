@@ -24,6 +24,7 @@ import ProviderConfigDialog, { type ProviderFormState } from "./components/Provi
 import ProviderSettingsSection from "./components/ProviderSettingsSection";
 import SettingsMaintenanceSection from "./components/SettingsMaintenanceSection";
 import SettingsNavigationCards from "./components/SettingsNavigationCards";
+import HumanRelaySettingsCard from "./components/HumanRelaySettingsCard";
 import SettingsReadinessCard, { buildSettingsReadinessItems } from "./components/SettingsReadinessCard";
 import SettingsSectionGroup from "./components/SettingsSectionGroup";
 import StyleEngineRuntimeSettingsCard from "./components/StyleEngineRuntimeSettingsCard";
@@ -517,10 +518,11 @@ export default function SettingsPage() {
 
       <SettingsSectionGroup
         title="系统维护"
-        description="桌面更新、旧数据导入和提示词排查放在这里，避免打断日常创作配置。"
+        description="桌面更新、旧数据导入、提示词排查和人工中继放在这里，避免打断日常创作配置。"
         status="maintenance"
       >
         <SettingsNavigationCards mode="promptLogs" />
+        <HumanRelaySettingsCard />
         <SettingsMaintenanceSection />
       </SettingsSectionGroup>
 

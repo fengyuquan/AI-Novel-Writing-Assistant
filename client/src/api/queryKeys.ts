@@ -154,6 +154,8 @@ export const queryKeys = {
     promptLogs: (params: string) => ["settings", "prompt-logs", params] as const,
     promptLogSettings: ["settings", "prompt-log-settings"] as const,
     promptLogDetail: (id: string) => ["settings", "prompt-logs", "detail", id] as const,
+    humanRelaySettings: ["settings", "human-relay-settings"] as const,
+    humanRelayPending: ["settings", "human-relay-pending"] as const,
   },
   onboarding: {
     firstNovel: ["onboarding", "first-novel"] as const,

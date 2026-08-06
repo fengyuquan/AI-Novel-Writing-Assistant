@@ -6,6 +6,7 @@ import Navbar from "./Navbar";
 import NovelWorkspaceRail from "./NovelWorkspaceRail";
 import Sidebar from "./Sidebar";
 import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog";
+import HumanRelayDialog from "@/components/humanRelay/HumanRelayDialog";
 import MobileSiteShell from "./mobile/MobileSiteShell";
 import AutoDirectorPauseNotificationWatcher from "@/components/autoDirector/AutoDirectorPauseNotificationWatcher";
 import { TaskRecoveryProvider } from "./TaskRecoveryContext";
@@ -80,6 +81,7 @@ export default function AppLayout() {
         <div className="min-h-screen bg-background">
           <AutoDirectorPauseNotificationWatcher />
           <LiveExecutionDialog compact className="fixed right-3 top-3 z-50 h-9 w-9 bg-background px-0 shadow-sm" />
+          <HumanRelayDialog />
           <LLMSelectionBootstrap />
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
@@ -97,6 +99,7 @@ export default function AppLayout() {
       <TaskRecoveryProvider>
         <MobileSiteShell>
           <AutoDirectorPauseNotificationWatcher />
+          <HumanRelayDialog />
           <LLMSelectionBootstrap />
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
@@ -114,6 +117,7 @@ export default function AppLayout() {
       <div className="h-[100dvh] overflow-hidden bg-background">
         <AutoDirectorPauseNotificationWatcher />
         <LLMSelectionBootstrap />
+        <HumanRelayDialog />
         <Navbar
           workspaceNavMode={isNovelWorkspace ? workspaceNavMode : undefined}
           onWorkspaceNavModeChange={isNovelWorkspace ? setWorkspaceNavMode : undefined}

@@ -1,3 +1,5 @@
+import { humanRelayService } from "../platform/llm/humanRelay";
+
 function createTimeoutError(timeoutMs: number, label?: string): Error {
   const error = new Error(
     label?.trim()
@@ -26,9 +28,14 @@ export async function runWithEnforcedTimeout<T>(input: {
   signal?: AbortSignal;
   run: (signal?: AbortSignal) => Promise<T>;
 }): Promise<T> {
-  const timeoutMs = typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0
+  let timeoutMs = typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs) && input.timeoutMs > 0
     ? Math.floor(input.timeoutMs)
     : null;
+
+  // Human relay waits for pasted responses; provider request timeouts must not cancel that wait.
+  if (timeoutMs && await humanRelayService.isEnabled()) {
+    timeoutMs = null;
+  }
 
   if (!timeoutMs && !input.signal) {
     return input.run(undefined);
