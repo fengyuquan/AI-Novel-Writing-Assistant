@@ -33,7 +33,7 @@
 
 禁止或不推荐做法：
 
-- 在前端状态初始化时写死 `deepseek/deepseek-chat`。
+- 在前端状态初始化时写死 `deepseek/deepseek-v4-flash` 或其他内置默认模型名。
 - 因为某个 provider 的静态 defaultModel 存在，就把未完成配置的厂商显示为可运行。
 - 用关键词、特殊厂商分支或一次性迁移脚本掩盖模型目录和当前选择事实源不一致的问题。
 
