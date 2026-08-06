@@ -22,6 +22,7 @@
 - `generation.titleCandidateCount`：书名候选数
 - `generation.estimatedChapterDefault`：预估章数默认
 - `generation.maxVolumeCount`：卷规划上限（不超过硬顶 24）
+- `generation.directorCandidateCount`：导演方向候选套数
 - `generation.directorTitleOptionsMax`：导演书名备选最多
 - `generation.worldAxiomCount`：世界核心公理条数
 - `generation.characterCandidateDefaultCount`：角色候选默认建议数

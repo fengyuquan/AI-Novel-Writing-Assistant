@@ -8,6 +8,7 @@ export type GenerationCountFieldKey =
   | "estimatedChapterDefault"
   | "bookAnalysisCharacterMax"
   | "comicSceneMax"
+  | "directorCandidateCount"
   | "directorTitleOptionsMax";
 
 export type GenerationCountGroup =
@@ -78,10 +79,21 @@ export const GENERATION_COUNT_FIELD_DESCRIPTORS: GenerationCountFieldDescriptor[
     defaultValue: GENERATION_VOLUME_COUNT_HARD_MAX,
   },
   {
+    key: "directorCandidateCount",
+    settingKey: "generation.directorCandidateCount",
+    label: "导演方向候选套数",
+    description: "自动导演一次给出几套可挑选的书级方向卡片。",
+    group: "planning",
+    groupLabel: "规划",
+    min: 2,
+    max: 6,
+    defaultValue: 2,
+  },
+  {
     key: "directorTitleOptionsMax",
     settingKey: "generation.directorTitleOptionsMax",
     label: "导演书名备选最多",
-    description: "自动导演规划方向时，最多附带几条封面向书名备选。",
+    description: "自动导演规划方向时，每套方向最多附带几条封面向书名备选。",
     group: "planning",
     groupLabel: "规划",
     min: 1,

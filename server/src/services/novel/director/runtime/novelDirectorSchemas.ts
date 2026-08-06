@@ -112,9 +112,14 @@ export const directorPersistedCandidateSchema = directorCandidateSchema.extend({
   id: nonEmptyString,
 });
 
-export const directorCandidateResponseSchema = z.object({
-  candidates: z.array(directorCandidateSchema).length(2),
-});
+export function createDirectorCandidateResponseSchema(count: number) {
+  const safeCount = Math.max(1, Math.floor(count));
+  return z.object({
+    candidates: z.array(directorCandidateSchema).length(safeCount),
+  });
+}
+
+export const directorCandidateResponseSchema = createDirectorCandidateResponseSchema(2);
 
 export const directorBookContractSchema = z.object({
   readingPromise: nonEmptyString,

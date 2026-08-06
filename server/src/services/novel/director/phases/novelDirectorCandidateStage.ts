@@ -18,8 +18,8 @@ import type { TitleFactorySuggestion } from "@ai-novel/shared/types/title";
 import { runStructuredPrompt } from "../../../../prompting/core/promptRunner";
 import {
   buildDirectorCandidateContextBlocks,
+  createDirectorCandidatePrompt,
   directorCandidatePatchPrompt,
-  directorCandidatePrompt,
 } from "../../../../prompting/prompts/novel/directorPlanning.prompts";
 import { titleGenerationService } from "../../../title/TitleGenerationService";
 import { getGenerationCount } from "../../../settings/GenerationCountSettingsService";
@@ -186,7 +186,7 @@ export class NovelDirectorCandidateStageService {
 
     const titleOptionsMax = await getGenerationCount("directorTitleOptionsMax");
     const parsed = await runStructuredPrompt({
-      asset: directorCandidatePrompt,
+      asset: createDirectorCandidatePrompt(context.count),
       promptInput: {
         idea: context.idea,
         context: context.request,
@@ -269,9 +269,10 @@ export class NovelDirectorCandidateStageService {
       DIRECTOR_PROGRESS.candidateProjectFraming,
     );
 
+    const candidateCount = await getGenerationCount("directorCandidateCount");
     const result = await this.generateBatch({
       idea: input.idea,
-      count: 2,
+      count: candidateCount,
       batches: [],
       presets: [],
       request: input,
@@ -338,9 +339,10 @@ export class NovelDirectorCandidateStageService {
       DIRECTOR_PROGRESS.candidateProjectFraming,
     );
 
+    const candidateCount = await getGenerationCount("directorCandidateCount");
     const result = await this.generateBatch({
       idea: input.idea,
-      count: 2,
+      count: candidateCount,
       batches: input.previousBatches,
       presets: input.presets ?? [],
       feedback: input.feedback,
