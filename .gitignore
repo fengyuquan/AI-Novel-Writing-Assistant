@@ -4,12 +4,15 @@ dist/
 .DS_Store
 .env
 .env.local
-dev.db
+# 仅忽略仓库根目录的 dev.db；server/dev.db 由私有仓主动跟踪。
+/dev.db
 client/.env
 client/.env.local
 server/.env
 server/.env.local
-server/dev.db
+# 私有仓可选：跟踪 server/dev.db 以便多机拉代码同步小说数据。
+# 勿提交 -wal/-shm；换电脑前先停后端再提交，避免半截写入。
+# 库内可能含 API Key，仅限私有仓库，勿 push 到公开/upstream。
 server/dev.db-shm
 server/dev.db-wal
 server/tmp_*.js
