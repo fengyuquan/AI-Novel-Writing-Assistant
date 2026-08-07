@@ -19,6 +19,7 @@
 - 顶部当前模型选择保存到 `AppSetting` 的 `llm.currentSelection`，内容包含 provider、model、temperature 和可选 maxTokens。
 - 前端 `useLLMStore` 保存的是运行时投影；页面启动后由设置接口和当前选择接口共同水合。
 - `LLMSelector` 只展示已配置、启用、且存在可用模型的厂商。
+- 自定义厂商没有内置静态模型清单；完整候选来自用户刷新或创建时拉取并写入 `APIKey.availableModelsJson` 的本地目录。`GET /api/settings/api-keys` 只读这份本地数据，不在首屏远程拉 `/models`。
 - 用户在顶部切换厂商或模型后，前端应同步保存到服务端当前选择。
 - 没有保存模型的内置厂商不应因为 `PROVIDERS.*.defaultModel` 存在就被视为可运行；需要保存模型、环境模型或可拉取的模型目录。
 - 模型路由、结构化兜底和各任务的显式模型覆盖仍属于独立配置；它们不等同于顶部当前模型。
@@ -42,10 +43,12 @@
 - 重启后顶部模型跳回旧默认：先查 `AppSetting.llm.currentSelection` 是否存在，再查前端是否完成水合，最后查当前厂商是否仍在 `/api/settings/api-keys` 的可运行列表中。
 - 顶部显示的模型不可用：检查厂商是否只有静态默认模型、是否没有保存模型、模型目录是否拉取失败。
 - 设置页能看到厂商但顶部没有它：确认 `isConfigured`、`isActive` 和模型列表是否同时满足，未配置模型的厂商不应进入顶部候选。
+- 自定义接口顶部只显示当前一个模型：检查是否已点过“刷新模型”，以及 `APIKey.availableModelsJson` 是否已写入；刷新成功后重启也应能看到完整列表。
 
 ## 相关模块
 
 - `server/src/services/settings/LLMSelectionSettingsService.ts`
+- `server/src/services/settings/providerAvailableModels.ts`
 - `server/src/routes/settings/llmSelectionRoutes.ts`
 - `server/src/routes/settings.ts`
 - `server/src/llm/modelCatalog.ts`

@@ -1659,6 +1659,8 @@ model APIKey {
   key       String?
   model     String?
   baseURL   String?
+  /// JSON string array of refreshed model ids for local read paths (no remote /models on GET).
+  availableModelsJson String?
   isActive  Boolean  @default(true)
   reasoningEnabled Boolean @default(true)
   concurrencyLimit Int @default(0)

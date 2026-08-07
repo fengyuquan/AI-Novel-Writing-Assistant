@@ -11,6 +11,7 @@ import { getProviderEnvApiKey, getProviderEnvModel, isBuiltInProvider, PROVIDERS
 import { authMiddleware } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
+import { parseAvailableModelsJson } from "../services/settings/providerAvailableModels";
 
 const router = Router();
 
@@ -49,7 +50,11 @@ router.get("/providers", async (_req, res, next) => {
           apiKey: keyConfig?.key ?? getProviderEnvApiKey(provider),
           baseURL: keyConfig?.baseURL ?? undefined,
           fallbackModel: currentModel,
-          fallbackModels: [...config.models, currentModel],
+          fallbackModels: [
+            ...config.models,
+            ...parseAvailableModelsJson(keyConfig?.availableModelsJson),
+            currentModel,
+          ],
         });
         return [provider, {
           name: config.name,
@@ -64,11 +69,12 @@ router.get("/providers", async (_req, res, next) => {
         .filter((item) => !isBuiltInProvider(item.provider))
         .map(async (item) => {
           const currentModel = item.model?.trim() || "";
+          const persistedModels = parseAvailableModelsJson(item.availableModelsJson);
           const models = await getProviderModels(item.provider, {
             apiKey: item.key ?? undefined,
             baseURL: item.baseURL ?? undefined,
             fallbackModel: currentModel,
-            fallbackModels: [currentModel],
+            fallbackModels: [...persistedModels, currentModel],
           });
           return [item.provider, {
             name: item.displayName?.trim() || item.provider,

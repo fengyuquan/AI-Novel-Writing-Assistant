@@ -13,6 +13,10 @@ import {
   getImageModelOptions,
   saveProviderImageModel,
 } from "../../services/settings/ProviderImageSettingsService";
+import {
+  mergeProviderModelCandidates,
+  serializeAvailableModelsJson,
+} from "../../services/settings/providerAvailableModels";
 import { secretStore } from "../../services/settings/secretStore";
 
 const MAX_PROVIDER_CONCURRENCY_LIMIT = 100;
@@ -45,6 +49,7 @@ type APIKeyRecordLike = {
   key: string | null;
   model: string | null;
   baseURL: string | null;
+  availableModelsJson?: string | null;
   isActive: boolean;
   reasoningEnabled?: boolean | null;
   concurrencyLimit?: number | null;
@@ -87,7 +92,10 @@ async function ensureUniqueCustomProviderId(name: string): Promise<string> {
 }
 
 function getFallbackModels(currentModel?: string): string[] {
-  return Array.from(new Set([currentModel ?? ""].filter(Boolean)));
+  return mergeProviderModelCandidates({
+    provider: "custom_preview",
+    currentModel,
+  });
 }
 
 function isModelFetchError(error: Error): boolean {
@@ -156,6 +164,7 @@ export function registerCustomProviderRoutes(router: Router): void {
           key: apiKey ?? null,
           model: model ?? null,
           baseURL,
+          availableModelsJson: models.length > 0 ? serializeAvailableModelsJson(models) : null,
           isActive: body.isActive ?? true,
           reasoningEnabled: body.reasoningEnabled ?? true,
           concurrencyLimit: body.concurrencyLimit ?? 0,

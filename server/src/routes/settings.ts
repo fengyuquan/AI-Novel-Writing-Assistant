@@ -20,6 +20,11 @@ import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
 import { ragServices } from "../services/rag";
 import { providerBalanceService } from "../services/settings/ProviderBalanceService";
+import {
+  mergeProviderModelCandidates,
+  parseAvailableModelsJson,
+  persistProviderAvailableModels,
+} from "../services/settings/providerAvailableModels";
 import { secretStore } from "../services/settings/secretStore";
 import {
   getDefaultImageModel,
@@ -128,6 +133,7 @@ type APIKeyRecordLike = {
   key: string | null;
   model: string | null;
   baseURL: string | null;
+  availableModelsJson?: string | null;
   isActive: boolean;
   reasoningEnabled?: boolean | null;
   concurrencyLimit?: number | null;
@@ -193,9 +199,16 @@ function normalizeProviderLimit(value: number | null | undefined): number {
   return Math.floor(value);
 }
 
-function getFallbackModels(provider: LLMProvider, currentModel?: string): string[] {
-  const models = isBuiltInProvider(provider) ? PROVIDERS[provider].models : [];
-  return Array.from(new Set([...models, currentModel ?? ""].filter(Boolean)));
+function getFallbackModels(
+  provider: LLMProvider,
+  currentModel?: string,
+  persistedModels?: string[],
+): string[] {
+  return mergeProviderModelCandidates({
+    provider,
+    currentModel,
+    persistedModels,
+  });
 }
 
 function buildBuiltInProviderStatus(
@@ -205,6 +218,7 @@ function buildBuiltInProviderStatus(
     key?: string | null;
     model?: string | null;
     baseURL?: string | null;
+    availableModelsJson?: string | null;
     isActive?: boolean;
     reasoningEnabled?: boolean | null;
     concurrencyLimit?: number | null;
@@ -221,7 +235,11 @@ function buildBuiltInProviderStatus(
     ?? getProviderEnvBaseUrl(provider)
     ?? PROVIDERS[provider].baseURL;
   const requiresApiKey = providerRequiresApiKey(provider);
-  const models = getFallbackModels(provider, configuredModel);
+  const models = getFallbackModels(
+    provider,
+    configuredModel,
+    parseAvailableModelsJson(item?.availableModelsJson),
+  );
   const currentModel = configuredModel ?? models[0] ?? "";
   const currentImageModel = imageModel ?? getDefaultImageModel(provider) ?? null;
   const isConfigured = requiresApiKey ? Boolean(effectiveKey && currentModel) : Boolean(currentModel && currentBaseURL);
@@ -255,6 +273,7 @@ function buildCustomProviderStatus(item: {
   key: string | null;
   model: string | null;
   baseURL: string | null;
+  availableModelsJson?: string | null;
   isActive: boolean;
   reasoningEnabled?: boolean | null;
   concurrencyLimit?: number | null;
@@ -262,7 +281,11 @@ function buildCustomProviderStatus(item: {
 }, imageModel: string | undefined): CustomProviderStatus {
   const currentModel = normalizeOptionalText(item.model) ?? "";
   const currentBaseURL = normalizeOptionalText(item.baseURL) ?? "";
-  const models = currentModel ? [currentModel] : [];
+  const models = getFallbackModels(
+    item.provider,
+    currentModel,
+    parseAvailableModelsJson(item.availableModelsJson),
+  );
   return {
     provider: item.provider,
     kind: "custom",
@@ -594,10 +617,15 @@ router.put(
       } : null);
       evictSharedLimiters(provider);
 
-      let models = getFallbackModels(provider, data.model ?? undefined);
+      let models = getFallbackModels(
+        provider,
+        data.model ?? undefined,
+        parseAvailableModelsJson(data.availableModelsJson),
+      );
       let message = "厂商配置已保存。";
       try {
         models = await refreshProviderModels(provider, effectiveKey, nextBaseURL ?? getProviderEnvBaseUrl(provider));
+        models = await persistProviderAvailableModels(provider, models);
       } catch {
         message = "厂商配置已保存，但模型列表刷新失败。可以稍后在厂商卡片中刷新。";
       }
@@ -675,10 +703,13 @@ router.post(
       if (providerRequiresApiKey(provider) && !effectiveKey) {
         throw new AppError("请先配置 API Key，再刷新模型列表。", 400);
       }
-      const models = await refreshProviderModels(
+      const models = await persistProviderAvailableModels(
         provider,
-        effectiveKey,
-        normalizeOptionalText(keyConfig?.baseURL) ?? getProviderEnvBaseUrl(provider),
+        await refreshProviderModels(
+          provider,
+          effectiveKey,
+          normalizeOptionalText(keyConfig?.baseURL) ?? getProviderEnvBaseUrl(provider),
+        ),
       );
       const currentModel = normalizeOptionalText(keyConfig?.model)
         ?? getProviderEnvModel(provider)

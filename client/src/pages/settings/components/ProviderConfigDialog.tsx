@@ -194,7 +194,7 @@ export default function ProviderConfigDialog({
               {isCreatingCustomProvider
                 ? "获取模型列表后会自动填入第一个可用模型；接口不返回列表时，可以手动填写。"
                 : editingConfig?.kind === "custom" && !canSelectListedModels
-                  ? "可点击厂商卡片的“刷新模型”获取列表，也可以手动填写默认模型。"
+                  ? "可点击厂商卡片的「刷新模型」获取并保存列表，也可以手动填写默认模型。"
                   : "如果列表里没有目标模型，可以手动输入。"}
             </div>
           </div>

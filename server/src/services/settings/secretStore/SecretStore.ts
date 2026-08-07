@@ -4,6 +4,7 @@ export interface SecretStoreRecord {
   key: string | null;
   model: string | null;
   baseURL: string | null;
+  availableModelsJson: string | null;
   isActive: boolean;
   reasoningEnabled: boolean | null;
   concurrencyLimit: number | null;
@@ -17,6 +18,7 @@ export interface SecretStoreWriteInput {
   key?: string | null;
   model?: string | null;
   baseURL?: string | null;
+  availableModelsJson?: string | null;
   isActive?: boolean;
   reasoningEnabled?: boolean;
   concurrencyLimit?: number | null;
