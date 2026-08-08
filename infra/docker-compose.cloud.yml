@@ -1,0 +1,53 @@
+# CentOS 7 / 小规格云主机：SQLite + Nginx 同源反代
+# 用法见 infra/deploy/centos7-docker.md
+name: ai-novel-cloud
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api.sqlite
+    restart: unless-stopped
+    env_file:
+      - ./deploy/cloud.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      AI_NOVEL_DATABASE_MODE: sqlite
+      DATABASE_URL: file:/app/server/data/dev.db
+      SQLITE_DATABASE_PATH: /app/server/data/dev.db
+    volumes:
+      # 挂目录，避免宿主机缺少文件时被 Docker 建成同名目录
+      - ../data/cloud/db:/app/server/data
+      - ../data/cloud/storage:/app/server/storage
+      - ../data/cloud/logs:/app/.logs
+    networks:
+      - ai-novel
+    mem_limit: 2500m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile.web.cloud
+      args:
+        VITE_API_BASE_URL: ""
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:8080"
+    networks:
+      - ai-novel
+    mem_limit: 256m
+
+networks:
+  ai-novel:
+    driver: bridge

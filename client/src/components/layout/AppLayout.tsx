@@ -16,6 +16,7 @@ import {
   shouldUseAutoDirectorMobileFullWidthContent,
 } from "@/mobile/autoDirector";
 import { CreationSetupProvider } from "@/components/onboarding/CreationSetupContext";
+import PageFindReplaceHost from "@/components/findReplace/PageFindReplaceHost";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "ai-novel.sidebar.collapsed";
 const WORKSPACE_RAIL_COLLAPSED_STORAGE_KEY = "ai-novel.workspace-rail.collapsed";
@@ -84,6 +85,7 @@ export default function AppLayout() {
             <Suspense fallback={<AppRouteFallback />}>
               <Outlet />
             </Suspense>
+            <PageFindReplaceHost />
             <TaskRecoveryDialog />
           </div>
         </TaskRecoveryProvider>
@@ -102,6 +104,7 @@ export default function AppLayout() {
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
           </Suspense>
+          <PageFindReplaceHost />
           <TaskRecoveryDialog />
         </div>
       </TaskRecoveryProvider>
@@ -119,6 +122,7 @@ export default function AppLayout() {
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
           </Suspense>
+          <PageFindReplaceHost />
           <TaskRecoveryDialog />
         </MobileSiteShell>
       </TaskRecoveryProvider>
@@ -159,6 +163,7 @@ export default function AppLayout() {
             </Suspense>
           </main>
         </div>
+        <PageFindReplaceHost />
         <TaskRecoveryDialog />
       </div>
     </TaskRecoveryProvider>

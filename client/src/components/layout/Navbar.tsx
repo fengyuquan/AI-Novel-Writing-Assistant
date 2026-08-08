@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import LLMSelector from "@/components/common/LLMSelector";
+import { openPageFindReplace } from "@/components/findReplace/PageFindReplaceHost";
 import AppVersionBadge from "@/components/layout/AppVersionBadge";
 import DesktopBrandMark from "@/components/layout/DesktopBrandMark";
 import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog";
@@ -47,6 +48,16 @@ export default function Navbar(props: NavbarProps) {
             {workspaceNavMode === "workspace" ? "项目导航" : "创作导航"}
           </Button>
         ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="hidden sm:inline-flex"
+          onClick={() => openPageFindReplace()}
+          title="在当前页面查找并替换文字（Ctrl+H）"
+        >
+          查找替换
+        </Button>
         <LiveExecutionDialog />
         <div className={useMobileAutoDirectorShell ? AUTO_DIRECTOR_MOBILE_CLASSES.navbarModelSelector : undefined}>
           <LLMSelector
