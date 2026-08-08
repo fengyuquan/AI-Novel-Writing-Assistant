@@ -5,6 +5,7 @@ const {
   assessChapterExecutionContractShape,
   aiChapterTaskSheetQualityAssessmentSchema,
   formatChapterTaskSheetQualityFailure,
+  shouldEnforceExecutionContractSyncGate,
 } = require("../../shared/dist/types/chapterTaskSheetQuality.js");
 const {
   ChapterTaskSheetQualityGateService,
@@ -203,6 +204,30 @@ test("chapter task sheet quality service passes usable semantic assessments", as
   assert.equal(result.canEnterExecution, true);
   assert.equal(result.status, "passed");
   assert.equal(result.confidence, 0.9);
+});
+
+test("sync gate ignores outline taskSheet notes until sceneCards exist", () => {
+  assert.equal(
+    shouldEnforceExecutionContractSyncGate({
+      taskSheet: "1. 写出套路开局。\n2. 抛出陨石警告。",
+      sceneCards: null,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldEnforceExecutionContractSyncGate({
+      taskSheet: "已有任务单",
+      sceneCards: buildSceneCards(),
+    }),
+    true,
+  );
+  assert.equal(
+    shouldEnforceExecutionContractSyncGate({
+      taskSheet: null,
+      sceneCards: null,
+    }),
+    false,
+  );
 });
 
 test("chapter task sheet quality prompt is registered as a product prompt asset", () => {

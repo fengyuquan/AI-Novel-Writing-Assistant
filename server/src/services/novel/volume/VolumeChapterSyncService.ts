@@ -7,6 +7,7 @@ import type {
 import {
   assessChapterExecutionContractShape,
   formatChapterTaskSheetQualityFailure,
+  shouldEnforceExecutionContractSyncGate,
 } from "@ai-novel/shared/types/chapterTaskSheetQuality";
 import { prisma } from "../../../db/prisma";
 import type { VolumeUpdateReason } from "../../../events";
@@ -195,8 +196,9 @@ export class VolumeChapterSyncService {
         ) {
           continue;
         }
-        const hasExecutionArtifact = Boolean(chapter.taskSheet?.trim() || chapter.sceneCards?.trim());
-        if (!hasExecutionArtifact) {
+        // Outline-imported taskSheet notes are not full execution contracts.
+        // Only sceneCards trigger the hard sync gate; incomplete contracts still block.
+        if (!shouldEnforceExecutionContractSyncGate(chapter)) {
           continue;
         }
         const result = assessChapterExecutionContractShape({

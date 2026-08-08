@@ -151,6 +151,7 @@ UI 和导演事实摘要可以展示 `affectedBeats`、`staleBeatCount`、`locke
 - 导入只保证 `title` + `summary`（可选 `purpose` / `mustAvoid` / `taskSheet`），并标记 `conflictLevelSource=user`。不自动生成 beat sheet、sceneCards；这些仍走既有细化 / 批量补任务单。
 - 同步默认继续保护已有正文：`preserveContent: true`。导入本身不删除执行区正文章节，也**不做正文冲突检测**。
 - 写入草稿时清空当前 beatSheets / rebalanceDecisions，避免旧节奏板与新章节清单错位；用户可重新生成节奏板。
+- 大纲里的「章节任务单」只是规划笔记。同步执行区时**不得**因缺少场景卡/边界合同而硬失败；只有已存在 `sceneCards` 的完整执行合同才走质量门禁。完整合同仍靠后续章节细化 / JIT 补齐。
 
 ### Setting Conflict Check
 
@@ -198,13 +199,15 @@ UI 和导演事实摘要可以展示 `affectedBeats`、`staleBeatCount`、`locke
 
 - 解析复用 `OutlineImportService.parseOutlineText`（模板 / auto / AI），不再强制先有小说。
 - 角色/世界失败不回滚小说与拆章，以 `warnings` 返回，引导用户到角色/世界页补齐。
-- 成功后进入编辑页 `stage=structured`。
+- 成功后进入编辑页 `stage=structured`，并同步章节壳到执行区；此时不要求每章已有完整执行合同。
+- 大纲任务单可写入 `taskSheet`，但不会因此触发「执行合同质量门禁」阻断开书。
 
 ### Failure Modes
 
 - 0 章大纲：preview/create 均阻断。
 - bootstrap AI 失败：提示重试；禁止关键词表本地猜角色/世界。
 - 世界抽取或绑定失败：书与拆章保留，warning 说明可稍后补。
+- 误把大纲任务单当完整执行合同：同步不应报「执行合同未通过质量门禁」；用户应继续到节奏页做章节细化后再开写。
 
 ### Related Modules
 
