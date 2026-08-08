@@ -1,5 +1,10 @@
 import { mergeImportedOutlineIntoVolumes } from "@ai-novel/shared/utils/outlineImport";
 import type { ParsedChapterOutline } from "@ai-novel/shared/utils/outlineImport";
+import {
+  extractOutlineBootstrapHints,
+  type OutlineBootstrapHints,
+} from "@ai-novel/shared/utils/outlineBootstrapHints";
+import { buildOutlineStrategyAndBeatSheets } from "@ai-novel/shared/utils/outlinePlanningBootstrap";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { OutlineCreateBootstrapDraft } from "@ai-novel/shared/types/outlineCreateBootstrap";
 import { runStructuredPrompt } from "../../../prompting/core/promptRunner";
@@ -8,6 +13,7 @@ import { novelCreateResourceRecommendationService } from "../NovelCreateResource
 import { NovelCoreService } from "../NovelCoreService";
 import { NovelVolumeService } from "./NovelVolumeService";
 import { outlineImportService, type OutlineImportMode } from "./OutlineImportService";
+import { getOutlineCreatePlanningHydrationService } from "./outlineCreate/OutlineCreatePlanningHydrationService";
 import { NovelWorldInstanceService } from "../worldContext/NovelWorldInstanceService";
 import { WorldService } from "../../world/WorldService";
 import { NovelWorkflowService } from "../workflow/NovelWorkflowService";
@@ -39,6 +45,20 @@ function slimOutlineForBootstrap(parsed: ParsedChapterOutline) {
       })),
     })),
   };
+}
+
+function firstChapterPromiseFallback(parsed: ParsedChapterOutline): string | null {
+  const chapters = parsed.volumes.flatMap((volume) => volume.chapters).slice(0, 5);
+  if (chapters.length === 0) {
+    return null;
+  }
+  return chapters
+    .map((chapter, index) => {
+      const detail = chapter.purpose?.trim() || chapter.summary.trim();
+      return `第${index + 1}章《${chapter.title}》：${detail.slice(0, 80)}`;
+    })
+    .join("；")
+    .slice(0, 800);
 }
 
 function normalizeBootstrapDraft(draft: OutlineCreateBootstrapDraft): OutlineCreateBootstrapDraft {
@@ -75,6 +95,59 @@ function normalizeBootstrapDraft(draft: OutlineCreateBootstrapDraft): OutlineCre
     characters,
     worldDraft,
   };
+}
+
+/**
+ * Fill empty bootstrap fields from deterministic outline preamble hints.
+ * Does not override non-empty AI fields except weak placeholder titles.
+ */
+function mergeBootstrapWithHints(
+  draft: OutlineCreateBootstrapDraft,
+  hints: OutlineBootstrapHints,
+  parsed: ParsedChapterOutline,
+): OutlineCreateBootstrapDraft {
+  const weakTitle = !draft.title.trim() || draft.title.trim() === "未命名小说";
+  const title = weakTitle && hints.title ? hints.title : draft.title;
+
+  let worldDraft = draft.worldDraft;
+  if (!worldDraft?.sourceText?.trim() && hints.worldSourceText?.trim()) {
+    worldDraft = {
+      title: `${title.trim() || hints.title || "本书"}世界`,
+      coverSummary: "从大纲「世界观/核心机制」段落整理的设定草稿",
+      sourceText: hints.worldSourceText.trim().slice(0, 8_000),
+    };
+  }
+
+  let characters = draft.characters;
+  if (characters.length === 0 && hints.characterNameHints.length > 0) {
+    characters = hints.characterNameHints.map((name, index) => ({
+      name,
+      role: index === 0 ? "主角" : "配角",
+      personality: "待补充（来自大纲线索，开书后可再细化）",
+      background: "待补充（来自大纲线索，开书后可再细化）",
+      appearance: null,
+      development: null,
+      selected: true,
+    }));
+  }
+
+  const first30ChapterPromise = draft.first30ChapterPromise.trim()
+    || hints.first30ChapterPromise?.trim().slice(0, 800)
+    || firstChapterPromiseFallback(parsed)
+    || "";
+
+  const description = draft.description.trim()
+    || hints.descriptionSeed?.trim().slice(0, 4_000)
+    || "";
+
+  return normalizeBootstrapDraft({
+    ...draft,
+    title,
+    description,
+    first30ChapterPromise,
+    characters,
+    worldDraft,
+  });
 }
 
 export type OutlineCreatePreviewResult = {
@@ -120,11 +193,13 @@ export class OutlineCreateBootstrapService {
       throw new Error("未能识别任何章节，请先完善大纲后再开书。");
     }
 
+    const bootstrapHints = extractOutlineBootstrapHints(input.text ?? "");
     const generated = await runStructuredPrompt({
       asset: fromOutlineBootstrapPrompt,
       promptInput: {
         outlineJson: safeJson(slimOutlineForBootstrap(parseResult.parsed)),
-        rawTextExcerpt: (input.text ?? "").slice(0, 12_000),
+        bootstrapHintsJson: safeJson(bootstrapHints, 8_000),
+        rawTextExcerpt: (input.text ?? "").slice(0, 24_000),
       },
       contextBlocks: [],
       options: {
@@ -139,13 +214,17 @@ export class OutlineCreateBootstrapService {
       },
     });
 
-    const bootstrap = normalizeBootstrapDraft({
-      ...generated.output,
-      characters: generated.output.characters.map((character) => ({
-        ...character,
-        selected: true,
-      })),
-    });
+    const bootstrap = mergeBootstrapWithHints(
+      {
+        ...generated.output,
+        characters: generated.output.characters.map((character) => ({
+          ...character,
+          selected: true,
+        })),
+      },
+      bootstrapHints,
+      parseResult.parsed,
+    );
 
     if (!bootstrap.worldDraft) {
       warnings.push("大纲里世界设定较少，开书时将跳过世界观草稿。");
@@ -236,16 +315,51 @@ export class OutlineCreateBootstrapService {
       seedPayload,
     });
 
-    const volumes = mergeImportedOutlineIntoVolumes([], input.parsed, {
+    const mergedVolumes = mergeImportedOutlineIntoVolumes([], input.parsed, {
       novelId: novel.id,
     });
-
-    await this.volumeService.updateVolumes(novel.id, {
-      volumes,
-      beatSheets: [],
-      rebalanceDecisions: [],
-      syncToChapterExecution: true,
+    const plannedWorkspace = buildOutlineStrategyAndBeatSheets({
+      volumes: mergedVolumes,
+      parsed: input.parsed,
+      bootstrap,
     });
+
+    // Outline notes are planning shells; sync must not fail the whole create flow.
+    // Write strategy + beat sheets with chapters so 节奏/拆章 is immediately usable.
+    try {
+      await this.volumeService.updateVolumes(novel.id, {
+        volumes: plannedWorkspace.volumes,
+        strategyPlan: plannedWorkspace.strategyPlan,
+        beatSheets: plannedWorkspace.beatSheets,
+        rebalanceDecisions: [],
+        syncToChapterExecution: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "未知错误";
+      const workspaceAlreadySaved = /卷工作区已保存|章节执行连接失败/.test(message);
+      if (!workspaceAlreadySaved) {
+        await this.volumeService.updateVolumes(novel.id, {
+          volumes: plannedWorkspace.volumes,
+          strategyPlan: plannedWorkspace.strategyPlan,
+          beatSheets: plannedWorkspace.beatSheets,
+          rebalanceDecisions: [],
+          syncToChapterExecution: false,
+        });
+      }
+      warnings.push(
+        `拆章已保存，但连接章节执行区未完成。可到「节奏 / 拆章」保存卷工作区后再同步。详情：${message}`,
+      );
+    }
+
+    const planningHydration = await getOutlineCreatePlanningHydrationService().hydrate({
+      novelId: novel.id,
+      parsed: input.parsed,
+      bootstrap,
+      provider: input.provider,
+      model: input.model,
+      temperature: input.temperature,
+    });
+    warnings.push(...planningHydration.warnings);
 
     let createdCharacterCount = 0;
     const selectedCharacters = bootstrap.characters.filter((character) => character.selected !== false);

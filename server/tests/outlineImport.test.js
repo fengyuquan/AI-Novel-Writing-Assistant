@@ -1,10 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   mergeImportedOutlineIntoVolumes,
   parseChapterOutlineMarkdown,
 } from "@ai-novel/shared/utils/outlineImport";
 import { applyOutlineImportConflictChoices } from "@ai-novel/shared/utils/outlineImportConflictApply";
+import { extractOutlineBootstrapHints } from "@ai-novel/shared/utils/outlineBootstrapHints";
+import { buildOutlineStrategyAndBeatSheets } from "@ai-novel/shared/utils/outlinePlanningBootstrap";
+import { shouldEnforceExecutionContractSyncGate } from "@ai-novel/shared/types/chapterTaskSheetQuality";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const sampleOutlinePath = path.join(repoRoot, "大纲.md");
 
 test("parseChapterOutlineMarkdown reads template chapters and labels", () => {
   const parsed = parseChapterOutlineMarkdown(`# 第1卷 开端
@@ -80,6 +89,153 @@ test("parseChapterOutlineMarkdown keeps bold chapter titles and labeled fields v
     parsed.volumes[0].chapters.map((item) => item.title).join("|"),
     /核心机制|第一卷/,
   );
+});
+
+test("outline task notes merge into shells that skip execution-contract sync gate", () => {
+  const parsed = parseChapterOutlineMarkdown(`### 第一阶段：开端（第1-2章）
+
+**第1章：距离本书太监，还有五章**
+*   **章节摘要**：楚天打铁皮猪时看到陨石警告。
+*   **章节目标**：建立高维数据面板概念。
+*   **章节任务单**：
+    1. 写出套路开局。
+    2. 抛出陨石警告。
+
+**第2章：给老子水！走马灯是这么用的！**
+*   **章节摘要**：打猪花了一整章。
+*   **章节目标**：展示水字数神通。
+*   **章节任务单**：
+    1. 引入师妹视角。
+`);
+  const merged = mergeImportedOutlineIntoVolumes([], parsed, { novelId: "novel-outline" });
+  assert.equal(parsed.chapterCount, 2);
+  assert.ok(merged[0].chapters[0].taskSheet?.includes("套路开局"));
+  assert.equal(merged[0].chapters[0].sceneCards, null);
+  for (const chapter of merged[0].chapters) {
+    assert.equal(
+      shouldEnforceExecutionContractSyncGate(chapter),
+      false,
+      `chapter ${chapter.chapterOrder} must not hard-block sync`,
+    );
+  }
+});
+
+test("repo 大纲.md parses and stays syncable as planning shells", { skip: !existsSync(sampleOutlinePath) }, () => {
+  const text = readFileSync(sampleOutlinePath, "utf8");
+  const parsed = parseChapterOutlineMarkdown(text);
+  assert.equal(parsed.confidence, "high");
+  assert.ok(parsed.chapterCount >= 30, `expected >=30 chapters, got ${parsed.chapterCount}`);
+  assert.equal(parsed.volumes.length, 1, "empty long-line volumes should be dropped");
+  assert.ok(parsed.issues.some((item) => item.includes("没有具体章节的卷标题")));
+  const merged = mergeImportedOutlineIntoVolumes([], parsed, { novelId: "novel-from-outline-md" });
+  const chapters = merged.flatMap((volume) => volume.chapters);
+  assert.equal(chapters.length, parsed.chapterCount);
+  assert.ok(chapters.every((chapter) => chapter.sceneCards == null || !String(chapter.sceneCards).trim()));
+  assert.ok(chapters.every((chapter) => !shouldEnforceExecutionContractSyncGate(chapter)));
+  assert.match(chapters[0].title, /太监|五章/);
+  assert.ok(chapters[0].taskSheet?.trim());
+
+  const hints = extractOutlineBootstrapHints(text);
+  assert.equal(hints.title, "我这本小说的字数快不够了");
+  assert.ok(hints.worldSourceText?.includes("高维面板") || hints.worldSourceText?.includes("追读"));
+  assert.ok(hints.first30ChapterPromise?.includes("滑稽") || hints.first30ChapterPromise?.includes("倒计时"));
+  assert.ok(hints.characterNameHints.includes("楚天"));
+});
+
+test("extractOutlineBootstrapHints lifts labeled preamble sections", () => {
+  const hints = extractOutlineBootstrapHints(`# 《测试长书》大纲
+
+这是一份为新手准备的双轨设定说明，用来验证开书草稿抽取。
+
+## 核心机制与世界观设定
+* 表层：东方玄幻
+* 隐藏：追读面板决定天道
+
+## 前30章精准落地计划：开局承诺
+核心体验是滑稽求生与悬念拉升。
+
+**第1章：开局**
+*   **章节摘要**：主角出场。
+`);
+  assert.equal(hints.title, "测试长书");
+  assert.match(hints.worldSourceText ?? "", /追读面板/);
+  assert.match(hints.first30ChapterPromise ?? "", /滑稽求生/);
+});
+
+test("parseChapterOutlineMarkdown drops empty long-line volumes", () => {
+  const parsed = parseChapterOutlineMarkdown(`### 第一卷：开端（第1-100章）
+* 卷核心目标：活下去
+
+### 第二卷：中盘（第101-200章）
+* 卷核心目标：上架
+
+**第1章：开场**
+*   **章节摘要**：开始。
+`);
+  assert.equal(parsed.chapterCount, 1);
+  assert.equal(parsed.volumes.length, 1);
+  assert.match(parsed.volumes[0].title, /开端/);
+});
+
+test("parseChapterOutlineMarkdown attaches stage labels for beat grouping", () => {
+  const parsed = parseChapterOutlineMarkdown(`### 第一阶段：开局求生（第1-2章）
+
+**第1章：开场**
+*   **章节摘要**：危机出现。
+
+**第2章：应对**
+*   **章节摘要**：初步摸清机制。
+
+### 第二阶段：阴谋升级（第3-3章）
+
+**第3章：反转**
+*   **章节摘要**：更大阴谋。
+`);
+  assert.equal(parsed.chapterCount, 3);
+  assert.match(parsed.volumes[0].chapters[0].stageLabel ?? "", /开局求生/);
+  assert.match(parsed.volumes[0].chapters[1].stageLabel ?? "", /开局求生/);
+  assert.match(parsed.volumes[0].chapters[2].stageLabel ?? "", /阴谋升级/);
+});
+
+test("buildOutlineStrategyAndBeatSheets fills strategy skeleton and chapter beatKeys", () => {
+  const parsed = parseChapterOutlineMarkdown(`### 第一阶段：开局
+
+**第1章：夜市**
+*   **章节摘要**：夺印。
+*   **章节目标**：建立危机。
+
+**第2章：追逃**
+*   **章节摘要**：脱身。
+`);
+  const merged = mergeImportedOutlineIntoVolumes([], parsed, { novelId: "novel-plan" });
+  const planned = buildOutlineStrategyAndBeatSheets({
+    volumes: merged,
+    parsed,
+    bootstrap: {
+      title: "测试书",
+      description: "一本测试小说",
+      targetAudience: "爽文读者",
+      commercialTags: ["玄幻", "元小说", "搞笑"],
+      bookSellingPoint: "打破第四面墙",
+      competingFeel: "类似某爆款",
+      first30ChapterPromise: "五章内建立追读危机",
+      characters: [{ name: "楚天", role: "主角", personality: "机灵", background: "宗门弟子", selected: true }],
+      worldDraft: null,
+    },
+  });
+
+  assert.equal(planned.strategyPlan.recommendedVolumeCount, 1);
+  assert.ok(planned.volumes[0].openingHook?.trim());
+  assert.ok(planned.volumes[0].mainPromise?.trim());
+  assert.ok(planned.volumes[0].climax?.trim());
+  assert.equal(planned.beatSheets.length, 1);
+  assert.equal(planned.beatSheets[0].beats.length, 6);
+  assert.deepEqual(
+    planned.beatSheets[0].beats.map((beat) => beat.key),
+    ["open_hook", "first_escalation", "midpoint_turn", "pressure_lock", "climax", "end_hook"],
+  );
+  assert.ok(planned.volumes[0].chapters.every((chapter) => Boolean(chapter.beatKey?.trim())));
+  assert.ok(planned.beatSheets[0].beats.every((beat) => beat.mustDeliver.length > 0));
 });
 
 test("mergeImportedOutlineIntoVolumes creates volume shells from empty workspace", () => {

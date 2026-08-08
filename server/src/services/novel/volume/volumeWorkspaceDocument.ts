@@ -522,16 +522,17 @@ export function mergeVolumeWorkspaceInput(
     && hasVolumeLevelStructureChanged(currentDocument.volumes, nextVolumes);
   const chapterListChanged = Array.isArray(record.volumes)
     && hasChapterListChanged(currentDocument.volumes, nextVolumes);
-  const beatSheets = strategyChanged || volumeLevelStructureChanged
-    ? []
-    : record.beatSheets !== undefined
-      ? record.beatSheets
-      : currentDocument.beatSheets;
-  const rebalanceDecisions = strategyChanged || volumeLevelStructureChanged || chapterListChanged
-    ? []
-    : record.rebalanceDecisions !== undefined
-      ? record.rebalanceDecisions
-      : currentDocument.rebalanceDecisions;
+  // Explicit beatSheets from the caller win. Only auto-clear when strategy/volume
+  // structure changes AND the request did not supply a replacement sheet set
+  // (e.g. outline create needs to write chapters + strategy + beats together).
+  const beatSheets = record.beatSheets !== undefined
+    ? record.beatSheets
+    : (strategyChanged || volumeLevelStructureChanged ? [] : currentDocument.beatSheets);
+  const rebalanceDecisions = record.rebalanceDecisions !== undefined
+    ? record.rebalanceDecisions
+    : (strategyChanged || volumeLevelStructureChanged || chapterListChanged
+      ? []
+      : currentDocument.rebalanceDecisions);
 
   return normalizeVolumeWorkspaceDocument(novelId, {
     workspaceVersion: "v2",

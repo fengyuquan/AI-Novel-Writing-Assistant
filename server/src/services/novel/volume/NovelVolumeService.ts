@@ -19,6 +19,7 @@ import { payoffLedgerSyncService } from "../../payoff/PayoffLedgerSyncService";
 import { StoryMacroPlanService } from "../storyMacro/StoryMacroPlanService";
 import { StyleBindingService } from "../../styleEngine/StyleBindingService";
 import { ChapterExecutionContractService } from "./ChapterExecutionContractService";
+import { applyCanonicalChapterFieldsToPlanChapter } from "./chapterPlanningFieldMapping";
 import {
   hasPayoffLedgerRelevantPlanChanges,
   hasPayoffLedgerSourceSignals,
@@ -125,23 +126,7 @@ export class NovelVolumeService {
         if (!row) {
           return chapter;
         }
-        const conflictLevelSource: VolumeChapterPlan["conflictLevelSource"] = chapter.conflictLevelSource === "user" ? "user" : "ai";
-        const nextChapter = {
-          ...chapter,
-          chapterId: row.id,
-          chapterOrder: row.order,
-          title: row.title,
-          summary: row.expectation?.trim() || chapter.summary,
-          targetWordCount: row.targetWordCount ?? null,
-          conflictLevel: chapter.conflictLevelSource === "user"
-            ? chapter.conflictLevel ?? null
-            : row.conflictLevel ?? null,
-          conflictLevelSource,
-          revealLevel: row.revealLevel ?? null,
-          mustAvoid: row.mustAvoid ?? null,
-          taskSheet: row.taskSheet ?? null,
-          sceneCards: row.sceneCards ?? null,
-        };
+        const nextChapter = applyCanonicalChapterFieldsToPlanChapter(chapter, row);
         if (JSON.stringify(nextChapter) !== JSON.stringify(chapter)) {
           changed = true;
         }
@@ -179,23 +164,18 @@ export class NovelVolumeService {
           return item;
         }
         changed = true;
-        const conflictLevelSource: VolumeChapterPlan["conflictLevelSource"] = item.conflictLevelSource === "user" ? "user" : "ai";
-        return {
-          ...item,
-          chapterId: chapter.id ?? item.chapterId ?? null,
-          chapterOrder: chapter.order,
+        return applyCanonicalChapterFieldsToPlanChapter(item, {
+          id: chapter.id,
+          order: chapter.order,
           title: chapter.title,
-          summary: chapter.expectation?.trim() || item.summary,
-          targetWordCount: chapter.targetWordCount ?? null,
-          conflictLevel: item.conflictLevelSource === "user"
-            ? item.conflictLevel ?? null
-            : chapter.conflictLevel ?? null,
-          conflictLevelSource,
-          revealLevel: chapter.revealLevel ?? null,
-          mustAvoid: chapter.mustAvoid ?? null,
-          taskSheet: chapter.taskSheet ?? null,
-          sceneCards: chapter.sceneCards ?? null,
-        };
+          expectation: chapter.expectation,
+          targetWordCount: chapter.targetWordCount,
+          conflictLevel: chapter.conflictLevel,
+          revealLevel: chapter.revealLevel,
+          mustAvoid: chapter.mustAvoid,
+          taskSheet: chapter.taskSheet,
+          sceneCards: chapter.sceneCards,
+        });
       });
       return changed ? { ...volume, chapters } : volume;
     });

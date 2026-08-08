@@ -121,7 +121,7 @@ export default function NovelCreateFromOutline() {
         <div className="max-w-3xl space-y-2">
           <h1 className="text-3xl font-semibold tracking-normal text-foreground">从大纲开书</h1>
           <p className="text-sm leading-6 text-muted-foreground">
-            粘贴你已有的章节大纲，系统会先抽出书名、简介、角色和世界观草稿供你确认，再一键创建小说并写入拆章。确认开书可能需要一两分钟。
+            粘贴你已有的章节大纲，系统会先抽出书名、简介、角色和世界观草稿供你确认，再一键创建小说、写入拆章，并补齐宏观规划与卷节奏。确认开书可能需要一两分钟。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -286,12 +286,27 @@ export default function NovelCreateFromOutline() {
               {(parsed?.volumes ?? []).map((volume, volumeIndex) => (
                 <div key={`${volume.title}-${volumeIndex}`}>
                   <div className="font-medium">{volume.title || `第${volumeIndex + 1}卷`}</div>
-                  <ol className="mt-1 list-decimal space-y-1 pl-5 text-muted-foreground">
+                  <ol className="mt-1 list-decimal space-y-2 pl-5 text-muted-foreground">
                     {volume.chapters.map((chapter, chapterIndex) => (
                       <li key={`${chapter.title}-${chapterIndex}`}>
                         <span className="text-foreground">{chapter.title}</span>
                         {chapter.summary ? (
-                          <span className="block text-xs">{chapter.summary}</span>
+                          <span className="mt-0.5 block text-xs">
+                            <span className="text-foreground/70">摘要：</span>
+                            {chapter.summary}
+                          </span>
+                        ) : null}
+                        {chapter.purpose ? (
+                          <span className="mt-0.5 block text-xs">
+                            <span className="text-foreground/70">目标：</span>
+                            {chapter.purpose}
+                          </span>
+                        ) : null}
+                        {chapter.taskSheet ? (
+                          <span className="mt-0.5 block whitespace-pre-wrap text-xs">
+                            <span className="text-foreground/70">任务单：</span>
+                            {chapter.taskSheet}
+                          </span>
                         ) : null}
                       </li>
                     ))}
@@ -368,7 +383,7 @@ export default function NovelCreateFromOutline() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            确认后会创建小说、写入拆章、创建勾选角色，并尽量写入世界观。角色或世界失败不会撤销整本书。
+            确认后会创建小说、写入拆章与节奏板、生成宏观规划草稿、创建勾选角色，并尽量写入世界观。局部失败不会撤销整本书。
           </p>
         </section>
       )}

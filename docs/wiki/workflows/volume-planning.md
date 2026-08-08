@@ -190,17 +190,27 @@ UI 和导演事实摘要可以展示 `affectedBeats`、`staleBeatCount`、`locke
 
 - 入口：`/novels/create-from-outline`（小说列表、空状态、手动创建页均可进入）。
 - 两段式 API：
-  - `POST /novels/create-from-outline/preview`：无 `novelId` 解析章节 + Prompt `novel.create.from_outline_bootstrap@v1` 抽出书名/简介/framing/角色/世界观文稿；**不写库**。
-  - `POST /novels/create-from-outline`：用户确认后 `createNovel` → 合并拆章并 `syncToChapterExecution` → 创建勾选角色 → 世界文稿走 `world.import.extract` 再绑定本书；`manual_create` workflow 附上 `novelId`。
+  - `POST /novels/create-from-outline/preview`：无 `novelId` 解析章节 + Prompt `novel.create.from_outline_bootstrap@v2` 抽出书名/简介/framing/角色/世界观文稿；**不写库**。
+  - `POST /novels/create-from-outline`：用户确认后 `createNovel` → 合并拆章并写入卷战略/节奏板 → `syncToChapterExecution` → 灌入故事宏观规划与书级合约 → 创建勾选角色 → 世界文稿走 `world.import.extract` 再绑定本书；`manual_create` workflow 附上 `novelId`。
+  - 若执行区连接失败但卷工作区已落库，开书接口仍应成功返回，并把连接失败写入 `warnings`；用户可到节奏页再同步。不要因为大纲任务单笔记让整次开书失败。
 - **不做**设定冲突三选一（新书无设定）；不自动进入自动导演。
 - 章节清单仍以解析结果为准；bootstrap Prompt 只抽取设定，禁止改写章节剧情原文。
+- 开书草稿抽取采用 **AI 结构化输出 + 大纲前序确定性线索补全**：`extractOutlineBootstrapHints` 从已标注的书名/世界观/前30章/主角名段落抬升线索，注入 Prompt，并在 AI 字段为空时回填，避免富大纲仍出现空白书名/世界/角色。
+- 开书落库必须同时灌入下游可消费的规划层，避免新手进入编辑页后宏观规划 0%、卷战略空白、节奏板无章节分组：
+  - `buildOutlineStrategyAndBeatSheets`：卷骨架字段 + `strategyPlan` + `beatSheets`，并给章节挂上 `beatKey`（优先按 `第N阶段` 分组）。
+  - `OutlineCreatePlanningHydrationService`：用大纲拼装 `storyInput` 调用既有 `StoryMacroPlanService.decompose`，并写入 `BookContract`。
+  - 工作区合并时，若请求显式带了 `beatSheets` / `rebalanceDecisions`，不得因卷结构变更而静默清空。
 
 ### Current Rule
 
 - 解析复用 `OutlineImportService.parseOutlineText`（模板 / auto / AI），不再强制先有小说。
-- 角色/世界失败不回滚小说与拆章，以 `warnings` 返回，引导用户到角色/世界页补齐。
+- 长线「第N卷」规划标题若下面没有具体章节体，解析后丢弃这些空卷，只保留真正落了章节的卷，避免预览出现一排空卷。
+- `### 第N阶段` 标题记入章节 `stageLabel`，供节奏板分组；不是卷标题。
+- 角色/世界/宏观规划失败不回滚小说与拆章，以 `warnings` 返回，引导用户到对应页补齐。
 - 成功后进入编辑页 `stage=structured`，并同步章节壳到执行区；此时不要求每章已有完整执行合同。
 - 大纲任务单可写入 `taskSheet`，但不会因此触发「执行合同质量门禁」阻断开书。
+- 开书核对页应展示章节摘要 / 目标 / 任务单，避免用户误以为字段未导入。
+- `Chapter.expectation` 只对应规划侧「章节目标 / purpose」；hydrate 不得用它覆盖「章节摘要 / summary」。从大纲开书后若摘要被冲成目标文案，属于边界回归，见 `docs/wiki/architecture/chapter-identity-and-planning-boundary.md`。
 
 ### Failure Modes
 

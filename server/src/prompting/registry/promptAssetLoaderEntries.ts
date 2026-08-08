@@ -454,7 +454,7 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/framing.prompts").novelFramingSuggestionPrompt as UnknownPromptAsset,
   },
   {
-    key: "novel.create.from_outline_bootstrap@v1",
+    key: "novel.create.from_outline_bootstrap@v2",
     load: () => require("../prompts/novel/create/fromOutlineBootstrap.prompts").fromOutlineBootstrapPrompt as UnknownPromptAsset,
   },
   {

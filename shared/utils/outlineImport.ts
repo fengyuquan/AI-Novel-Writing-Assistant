@@ -6,6 +6,8 @@ export type ImportedOutlineChapter = {
   purpose?: string | null;
   mustAvoid?: string | null;
   taskSheet?: string | null;
+  /** Optional stage/act label from `### 第N阶段：...` headings. */
+  stageLabel?: string | null;
 };
 
 export type ImportedOutlineVolume = {
@@ -25,6 +27,8 @@ export type ParsedChapterOutline = {
 
 /** `#/#/# # 第N卷 标题` */
 const VOLUME_HEADING_RE = /^(?:#{1,3}|＃{1,3})\s*(?:第\s*([0-9０-９一二三四五六七八九十百千两]+)\s*卷[.、:：\s-]*)(.+)$/u;
+/** `### 第N阶段：标题` / `## 第一阶段 标题` */
+const STAGE_HEADING_RE = /^(?:#{1,3}|＃{1,3})\s*(?:第\s*([0-9０-９一二三四五六七八九十百千两]+)\s*阶段[.、:：\s-]*)(.+)$/u;
 /** `## 第N章 标题` */
 const HASH_CHAPTER_RE = /^(?:##|＃＃)\s*(?:第\s*([0-9０-９一二三四五六七八九十百千两]+)\s*[章节回][.、:：\s-]*)(.+)$/u;
 /** `# 第N章 标题` */
@@ -120,12 +124,14 @@ export function parseChapterOutlineMarkdown(text: string): ParsedChapterOutline 
   const state: {
     currentVolume: ImportedOutlineVolume | null;
     currentChapter: ImportedOutlineChapter | null;
+    currentStageLabel: string | null;
     explicitChapterCount: number;
     hasVolumeMarkers: boolean;
     taskSheetMode: boolean;
   } = {
     currentVolume: null,
     currentChapter: null,
+    currentStageLabel: null,
     explicitChapterCount: 0,
     hasVolumeMarkers: false,
     taskSheetMode: false,
@@ -197,6 +203,7 @@ export function parseChapterOutlineMarkdown(text: string): ParsedChapterOutline 
       purpose: null,
       mustAvoid: null,
       taskSheet: null,
+      stageLabel: state.currentStageLabel,
     };
     ensureVolume();
   };
@@ -211,6 +218,7 @@ export function parseChapterOutlineMarkdown(text: string): ParsedChapterOutline 
     if (volumeMatch) {
       flushChapter();
       state.hasVolumeMarkers = true;
+      state.currentStageLabel = null;
       const title = normalizeTitle(volumeMatch[2] || `第${volumeMatch[1] || volumes.length + 1}卷`);
       state.currentVolume = { title: title || `第${volumes.length + 1}卷`, chapters: [] };
       volumes.push(state.currentVolume);
@@ -218,6 +226,14 @@ export function parseChapterOutlineMarkdown(text: string): ParsedChapterOutline 
       if (range) {
         volumeRanges.set(state.currentVolume, range);
       }
+      continue;
+    }
+
+    const stageMatch = line.match(STAGE_HEADING_RE);
+    if (stageMatch) {
+      flushChapter();
+      const stageTitle = normalizeTitle(stageMatch[2] || `第${stageMatch[1] || ""}阶段`);
+      state.currentStageLabel = stageTitle || state.currentStageLabel;
       continue;
     }
 
@@ -311,6 +327,16 @@ export function parseChapterOutlineMarkdown(text: string): ParsedChapterOutline 
     volumes[0].title = "第1卷";
   }
 
+  // Long-line volume plans often declare 卷标题 without per-chapter bodies.
+  // Keep only volumes that actually received chapters so preview/create stay usable.
+  const emptyVolumeCount = volumes.filter((volume) => volume.chapters.length === 0).length;
+  if (chapterCount > 0 && emptyVolumeCount > 0) {
+    const kept = volumes.filter((volume) => volume.chapters.length > 0);
+    volumes.length = 0;
+    volumes.push(...kept);
+    issues.push(`已忽略 ${emptyVolumeCount} 个没有具体章节的卷标题（多为长线规划摘要，不会写入空卷）。`);
+  }
+
   const confidence: OutlineParseConfidence = isHighConfidence({
     chapterCount,
     explicitChapterCount,
@@ -327,7 +353,7 @@ export function parseChapterOutlineMarkdown(text: string): ParsedChapterOutline 
     confidence,
     issues,
     chapterCount,
-    hasVolumeMarkers,
+    hasVolumeMarkers: hasVolumeMarkers && volumes.length > 0,
   };
 }
 

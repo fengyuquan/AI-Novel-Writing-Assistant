@@ -15,10 +15,12 @@
 - 正式章节字段以 `Chapter` 为准：章序、标题、正文、执行状态、目标字数、冲突等级、揭露等级、禁止事项、任务单、场景卡和质量状态。
 - 规划扩展字段以 `VolumeChapterPlan` 为准：卷归属、节奏段、章节目的、独占事件、章末状态、下章入口状态和伏笔引用。
 - 缺少 `chapterId` 的旧规划只能作为兼容状态存在，服务层应优先按章序和标题补链，并把补链结果写回卷工作区。
+- `Chapter.expectation` 表示执行侧章节目标，对应规划侧 `purpose`；**不得**在 hydrate / mirror 时用 `expectation` 覆盖规划侧 `summary`（大纲「章节摘要」）。否则从大纲开书后，摘要会被目标文案冲掉，节奏拆章页会看起来“和大纲不一样”。
+- 同步变更预览（含前端 `volumePlan.utils` / `structuredOutlineSync.utils`）对比 `expectation` 时应对 `purpose || summary`，字段名标为「章节目标」，不要把 `expectation ≠ summary` 误报成「摘要」。
 
 ## Current Rule
 
-卷工作区读取时会用 `chapterId` 对齐正式章节，并用正式章节字段 hydrate 规划视图。没有 `chapterId` 的旧数据会按章序兜底匹配正式章节。
+卷工作区读取时会用 `chapterId` 对齐正式章节，并用正式章节字段 hydrate 规划视图。没有 `chapterId` 的旧数据会按章序兜底匹配正式章节。hydrate 映射由 `applyCanonicalChapterFieldsToPlanChapter` 统一处理：`expectation → purpose`，`summary` 仅在规划侧原本为空且无 purpose 的旧数据场景下才回退用 expectation。
 
 卷拆章保存、章节列表生成和自动导演拆章细化应自动维护正式章节记录，并写回 `VolumeChapterPlan.chapterId`。用户主流程不应要求理解或点击“同步到章节执行”。
 

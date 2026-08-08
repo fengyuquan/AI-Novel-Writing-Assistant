@@ -14,7 +14,7 @@ export const NOVEL_PROMPT_BUDGETS = {
   volumeChapterList: 1600,
   volumeOutlineImport: 1600,
   volumeOutlineImportConflict: 2000,
-  createFromOutlineBootstrap: 2200,
+  createFromOutlineBootstrap: 3600,
   volumeChapterDetail: 1600,
   volumeRebalance: 1600,
   chapterWriter: 2600,
