@@ -29,6 +29,7 @@ import type {
   NovelWorldView,
 } from "@ai-novel/shared/types/novelWorld";
 import type { BookAnalysisSectionKey } from "@ai-novel/shared/types/bookAnalysis";
+import type { OutlineImportPendingAlignmentItem } from "@ai-novel/shared/types/outlineImportConflict";
 import type { ExistingOutlineChapter } from "./volumePlan.utils";
 
 interface BuildNovelEditPlanningTabsInput {
@@ -153,6 +154,10 @@ interface BuildNovelEditPlanningTabsInput {
   onRemoveChapter: (volumeId: string, chapterId: string) => void;
   onMoveChapter: (volumeId: string, chapterId: string, direction: -1 | 1) => void;
   onApplyBatch: (patch: { conflictLevel?: number; targetWordCount?: number; generateTaskSheet?: boolean }) => void;
+  onApplyImportedVolumes: (
+    volumes: VolumePlan[],
+    options?: { pendingAlignments?: OutlineImportPendingAlignmentItem[] },
+  ) => void;
   onSaveStructured: () => void;
   isSavingStructured: boolean;
 }
@@ -291,6 +296,7 @@ export function buildNovelEditPlanningTabs(input: BuildNovelEditPlanningTabsInpu
     onRemoveChapter: input.onRemoveChapter,
     onMoveChapter: input.onMoveChapter,
     onApplyBatch: input.onApplyBatch,
+    onApplyImportedVolumes: input.onApplyImportedVolumes,
     onSave: input.onSaveStructured,
     isSaving: input.isSavingStructured,
   };

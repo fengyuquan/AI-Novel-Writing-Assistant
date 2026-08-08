@@ -8,6 +8,7 @@ const Home = lazy(() => import("@/pages/Home"));
 const HelpPage = lazy(() => import("@/pages/help/HelpPage"));
 const NovelList = lazy(() => import("@/pages/novels/NovelList"));
 const NovelCreate = lazy(() => import("@/pages/novels/NovelCreate"));
+const NovelCreateFromOutline = lazy(() => import("@/pages/novels/NovelCreateFromOutline"));
 const CreationStudioPage = lazy(() => import("@/pages/creationStudio/CreationStudioPage"));
 const ShortStoryStudioPage = lazy(() => import("@/pages/shortStory/ShortStoryStudioPage"));
 const AutoDirectorCreatePage = lazy(() => import("@/pages/novels/autoDirector/AutoDirectorCreatePage"));
@@ -48,6 +49,7 @@ const routes: RouteObject[] = [
       { path: "novels", element: <NovelList /> },
       { path: "create", element: <CreationStudioPage /> },
       { path: "novels/create", element: <NovelCreate /> },
+      { path: "novels/create-from-outline", element: <NovelCreateFromOutline /> },
       { path: "novels/auto-director", element: <AutoDirectorCreatePage /> },
       { path: "novels/:id/simple", element: <SimpleNovelShelfPage /> },
       { path: "novels/:id/story", element: <ShortStoryStudioPage /> },

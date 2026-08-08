@@ -50,6 +50,10 @@ export interface NovelApplicationServices {
   getVolumes: NovelApplicationMethod;
   updateVolumes: NovelApplicationMethod;
   generateVolumes: NovelApplicationMethod;
+  importVolumeOutline: NovelApplicationMethod;
+  analyzeVolumeOutlineConflicts: NovelApplicationMethod;
+  previewCreateNovelFromOutline: NovelApplicationMethod;
+  createNovelFromOutline: NovelApplicationMethod;
   listVolumeVersions: NovelApplicationMethod;
   getVolumeVersion: NovelApplicationMethod;
   createVolumeDraft: NovelApplicationMethod;
@@ -168,6 +172,10 @@ export const novelApplicationServiceMethodNames = [
   "getVolumes",
   "updateVolumes",
   "generateVolumes",
+  "importVolumeOutline",
+  "analyzeVolumeOutlineConflicts",
+  "previewCreateNovelFromOutline",
+  "createNovelFromOutline",
   "listVolumeVersions",
   "getVolumeVersion",
   "createVolumeDraft",

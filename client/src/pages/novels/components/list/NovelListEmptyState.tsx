@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import {
   DIRECTOR_CREATE_LINK,
   MANUAL_CREATE_LINK,
+  OUTLINE_CREATE_LABEL,
+  OUTLINE_CREATE_LINK,
   PRIMARY_CREATE_LABEL,
   SHORT_STORY_CREATE_LINK,
 } from "./novelListViewModel";
@@ -29,6 +31,9 @@ export function NovelListEmptyState(props: {
             <Link to={SHORT_STORY_CREATE_LINK}>创作短篇</Link>
           </Button>
         ) : null}
+        <Button asChild variant="outline">
+          <Link to={OUTLINE_CREATE_LINK}>{OUTLINE_CREATE_LABEL}</Link>
+        </Button>
         <Button asChild variant="outline">
           <Link to={MANUAL_CREATE_LINK}>手动创建小说</Link>
         </Button>

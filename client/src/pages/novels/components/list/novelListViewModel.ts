@@ -24,6 +24,8 @@ export const SHORT_STORY_CREATE_LINK = featureFlags.creationStudioEnabled
   : null;
 export const PRIMARY_CREATE_LABEL = "AI 自动导演开书";
 export const MANUAL_CREATE_LINK = "/novels/create";
+export const OUTLINE_CREATE_LINK = "/novels/create-from-outline";
+export const OUTLINE_CREATE_LABEL = "从大纲开书";
 export const NOVEL_LIST_PAGE_SIZE = 24;
 
 export interface NovelListSummaryItem {

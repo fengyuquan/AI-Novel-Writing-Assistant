@@ -199,6 +199,7 @@ import {
   buildOutlinePreviewFromVolumes,
   buildStructuredPreviewFromVolumes,
   buildVolumeSyncPreview,
+  normalizeVolumeDraft,
   type ExistingOutlineChapter,
   type VolumeSyncOptions,
 } from "./volumePlan.utils";
@@ -2546,6 +2547,11 @@ export default function NovelEdit() {
     onMoveChapter: handleMoveChapter,
     onApplyBatch: (patch) => {
       setVolumeDraft((prev) => applyVolumeChapterBatch(prev, patch));
+    },
+    onApplyImportedVolumes: (nextVolumes) => {
+      setVolumeDraft(normalizeVolumeDraft(nextVolumes));
+      setVolumeBeatSheets([]);
+      setVolumeRebalanceDecisions([]);
     },
     onSaveStructured: () => saveStructuredMutation.mutate(),
     isSavingStructured: saveStructuredMutation.isPending,

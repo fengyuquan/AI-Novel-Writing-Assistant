@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import {
   DIRECTOR_CREATE_LINK,
   MANUAL_CREATE_LINK,
+  OUTLINE_CREATE_LABEL,
+  OUTLINE_CREATE_LINK,
   PRIMARY_CREATE_LABEL,
   SHORT_STORY_CREATE_LINK,
   type NovelListSummaryItem,
@@ -42,7 +44,7 @@ export function NovelListHeader(props: {
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Button asChild>
             <Link to={DIRECTOR_CREATE_LINK}>
               <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -57,6 +59,9 @@ export function NovelListHeader(props: {
               </Link>
             </Button>
           ) : null}
+          <Button asChild variant="outline">
+            <Link to={OUTLINE_CREATE_LINK}>{OUTLINE_CREATE_LABEL}</Link>
+          </Button>
           <Button asChild variant="outline">
             <Link to={MANUAL_CREATE_LINK}>手动创建小说</Link>
           </Button>

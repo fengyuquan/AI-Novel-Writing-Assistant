@@ -318,6 +318,14 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/volume/chapterList.prompts").createVolumeChapterListPrompt(1) as UnknownPromptAsset,
   },
   {
+    key: "novel.volume.outline_import@v2",
+    load: () => require("../prompts/novel/volume/outlineImport.prompts").volumeOutlineImportPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.volume.outline_import_conflict@v1",
+    load: () => require("../prompts/novel/volume/outlineImportConflict.prompts").volumeOutlineImportConflictPrompt as UnknownPromptAsset,
+  },
+  {
     key: "novel.volume.chapter_purpose@v1",
     load: () => require("../prompts/novel/volume/chapterDetail.prompts").volumeChapterPurposePrompt as UnknownPromptAsset,
   },
@@ -444,6 +452,10 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
   {
     key: "novel.framing.suggest@v1",
     load: () => require("../prompts/novel/framing.prompts").novelFramingSuggestionPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.create.from_outline_bootstrap@v1",
+    load: () => require("../prompts/novel/create/fromOutlineBootstrap.prompts").fromOutlineBootstrapPrompt as UnknownPromptAsset,
   },
   {
     key: "novel.continuation.rewrite_similarity@v1",

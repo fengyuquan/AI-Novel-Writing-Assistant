@@ -42,6 +42,7 @@ import type {
   StoryMacroState,
 } from "@ai-novel/shared/types/storyMacro";
 import type { BookAnalysisSectionKey } from "@ai-novel/shared/types/bookAnalysis";
+import type { OutlineImportPendingAlignmentItem } from "@ai-novel/shared/types/outlineImportConflict";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { NovelExportDownloadFormat } from "@ai-novel/shared/types/novelExport";
 import type { ChapterRuntimePackage } from "@ai-novel/shared/types/chapterRuntime";
@@ -299,6 +300,10 @@ export interface StructuredTabViewProps extends Omit<
   onRemoveChapter: (volumeId: string, chapterId: string) => void;
   onMoveChapter: (volumeId: string, chapterId: string, direction: -1 | 1) => void;
   onApplyBatch: (patch: { conflictLevel?: number; targetWordCount?: number; generateTaskSheet?: boolean }) => void;
+  onApplyImportedVolumes: (
+    volumes: VolumePlan[],
+    options?: { pendingAlignments?: OutlineImportPendingAlignmentItem[] },
+  ) => void;
   onSave: () => void;
   isSaving: boolean;
 }

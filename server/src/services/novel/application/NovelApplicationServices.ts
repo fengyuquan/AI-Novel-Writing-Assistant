@@ -20,6 +20,9 @@ import { novelProductionOrchestrator } from "../production/NovelProductionOrches
 import { registerQualityRepairStageRunner } from "../production/QualityRepairStageRunner";
 import { ChapterRuntimeCoordinator } from "../runtime/ChapterRuntimeCoordinator";
 import { NovelVolumeService } from "../volume/NovelVolumeService";
+import { outlineImportService } from "../volume/OutlineImportService";
+import { outlineImportConflictService } from "../volume/OutlineImportConflictService";
+import { outlineCreateBootstrapService } from "../volume/OutlineCreateBootstrapService";
 import { NovelChapterEditorService } from "../chapterEditor/NovelChapterEditorService";
 import { ChapterEditorWorkspaceService } from "../chapterEditor/ChapterEditorWorkspaceService";
 import type { NovelApplicationServices } from "./NovelApplicationContracts";
@@ -354,6 +357,22 @@ export class DefaultNovelApplicationServices {
 
   generateVolumes(...args: Parameters<NovelVolumeService["generateVolumes"]>) {
     return this.volumeService.generateVolumes(...args);
+  }
+
+  importVolumeOutline(...args: Parameters<typeof outlineImportService.importOutline>) {
+    return outlineImportService.importOutline(...args);
+  }
+
+  analyzeVolumeOutlineConflicts(...args: Parameters<typeof outlineImportConflictService.analyzeConflicts>) {
+    return outlineImportConflictService.analyzeConflicts(...args);
+  }
+
+  previewCreateNovelFromOutline(...args: Parameters<typeof outlineCreateBootstrapService.preview>) {
+    return outlineCreateBootstrapService.preview(...args);
+  }
+
+  createNovelFromOutline(...args: Parameters<typeof outlineCreateBootstrapService.create>) {
+    return outlineCreateBootstrapService.create(...args);
   }
 
   listVolumeVersions(...args: Parameters<NovelVolumeService["listVolumeVersions"]>) {

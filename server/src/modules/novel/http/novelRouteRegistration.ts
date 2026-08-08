@@ -62,6 +62,8 @@ import {
   volumeDraftSchema,
   volumeGenerateSchema,
   volumeImpactSchema,
+  volumeOutlineImportSchema,
+  volumeOutlineImportConflictSchema,
   volumeSyncSchema,
   volumeVersionParamsSchema,
 } from "./novelHttpSchemas";
@@ -190,6 +192,8 @@ export function registerNovelHttpRoutes(router: Router, services: NovelHttpServi
     volumeDraftSchema,
     volumeImpactSchema,
     volumeGenerateSchema,
+    volumeOutlineImportSchema,
+    volumeOutlineImportConflictSchema,
     volumeSyncSchema,
   });
 
