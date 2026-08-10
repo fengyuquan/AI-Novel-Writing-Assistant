@@ -37,7 +37,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = "SheetOverlay";
 
 const sheetVariants = cva(
-  "fixed z-50 flex flex-col gap-0 bg-background shadow-lg outline-none",
+  "fixed z-50 flex min-h-0 flex-col gap-0 overflow-hidden bg-background shadow-lg outline-none",
   {
     variants: {
       side: {
@@ -89,7 +89,7 @@ const SheetContent = React.forwardRef<
 SheetContent.displayName = "SheetContent";
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col gap-1.5 px-4 pb-3 pt-2 text-left", className)} {...props} />
+  <div className={cn("flex shrink-0 flex-col gap-1.5 px-4 pb-3 pt-2 text-left", className)} {...props} />
 );
 SheetHeader.displayName = "SheetHeader";
 
@@ -129,7 +129,13 @@ const SheetDescription = React.forwardRef<
 SheetDescription.displayName = "SheetDescription";
 
 const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4", className)} {...props} />
+  <div
+    className={cn(
+      "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 [-webkit-overflow-scrolling:touch]",
+      className,
+    )}
+    {...props}
+  />
 );
 SheetBody.displayName = "SheetBody";
 

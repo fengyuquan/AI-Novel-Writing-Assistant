@@ -292,10 +292,9 @@ body {
     overflow-y: auto;
   }
 
-  /* Bottom/side Sheets manage their own size; do not inset them like centered dialogs. */
+  /* Bottom/side Sheets manage width themselves; keep component max-height so bodies can scroll. */
   [data-vaul-drawer][role="dialog"] {
     max-width: none;
-    max-height: none;
     overflow: hidden;
   }
 

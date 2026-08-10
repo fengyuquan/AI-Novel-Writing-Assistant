@@ -496,7 +496,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   if (isMobileViewport) {
     return (
-      <div className="mobile-page-chapter-edit flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden pb-28">
+      <div className="mobile-page-chapter-edit flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden px-3 pb-28 pt-3">
         <header className="shrink-0 space-y-2 rounded-xl border border-border/70 bg-background p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -547,7 +547,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           ) : null}
         </header>
 
-        <div className="min-h-[55vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border/70 bg-background">
+        <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border/70 bg-background">
           {textEditor}
         </div>
 

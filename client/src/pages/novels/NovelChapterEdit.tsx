@@ -59,7 +59,7 @@ export default function NovelChapterEdit() {
   }
 
   return (
-    <div className="mobile-page-chapter-edit flex h-full min-h-0 flex-col gap-4 overflow-x-hidden">
+    <div className="mobile-page-chapter-edit flex h-dvh min-h-0 flex-col overflow-hidden">
       <ChapterEditorShell
         key={`${chapter.id}:${chapter.updatedAt}`}
         novelId={id}

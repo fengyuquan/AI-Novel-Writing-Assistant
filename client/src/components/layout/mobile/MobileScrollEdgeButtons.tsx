@@ -17,6 +17,7 @@ type ScrollMetrics = {
   scrollTop: number;
   scrollHeight: number;
   viewportHeight: number;
+  maxScroll: number;
   scrollTo: (top: number) => void;
 };
 
@@ -25,19 +26,26 @@ function getWindowMetrics(): ScrollMetrics {
   const scrollTop = window.scrollY || scrollingElement.scrollTop || 0;
   const scrollHeight = scrollingElement.scrollHeight || 0;
   const viewportHeight = window.innerHeight || scrollingElement.clientHeight || 0;
+  const maxScroll = Math.max(0, scrollHeight - viewportHeight);
   return {
     scrollTop,
     scrollHeight,
     viewportHeight,
+    maxScroll,
     scrollTo: (top) => window.scrollTo({ top, behavior: "smooth" }),
   };
 }
 
 function getElementMetrics(element: HTMLElement): ScrollMetrics {
+  const scrollTop = element.scrollTop;
+  const scrollHeight = element.scrollHeight;
+  const viewportHeight = element.clientHeight;
+  const maxScroll = Math.max(0, scrollHeight - viewportHeight);
   return {
-    scrollTop: element.scrollTop,
-    scrollHeight: element.scrollHeight,
-    viewportHeight: element.clientHeight,
+    scrollTop,
+    scrollHeight,
+    viewportHeight,
+    maxScroll,
     scrollTo: (top) => element.scrollTo({ top, behavior: "smooth" }),
   };
 }
@@ -55,6 +63,23 @@ function resolveScrollTarget(
   return null;
 }
 
+function pickActiveMetrics(
+  scrollContainerRef?: RefObject<HTMLElement | null>,
+  scrollContainerSelector?: string,
+): ScrollMetrics {
+  const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
+  const windowMetrics = getWindowMetrics();
+  if (!element) {
+    return windowMetrics;
+  }
+  const elementMetrics = getElementMetrics(element);
+  // Prefer the container only when it actually scrolls; otherwise fall back to page scroll.
+  if (elementMetrics.maxScroll > 96) {
+    return elementMetrics;
+  }
+  return windowMetrics;
+}
+
 export default function MobileScrollEdgeButtons({
   bottomOffsetClassName,
   className,
@@ -69,25 +94,21 @@ export default function MobileScrollEdgeButtons({
     let frame = 0;
 
     const update = () => {
-      const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
-      const metrics = element ? getElementMetrics(element) : getWindowMetrics();
-      const maxScroll = Math.max(0, metrics.scrollHeight - metrics.viewportHeight);
-      setCanScrollUp(scrollableEnough(maxScroll) && metrics.scrollTop > 48);
-      setCanScrollDown(scrollableEnough(maxScroll) && metrics.scrollTop < maxScroll - 48);
+      const metrics = pickActiveMetrics(scrollContainerRef, scrollContainerSelector);
+      setCanScrollUp(metrics.maxScroll > 96 && metrics.scrollTop > 48);
+      setCanScrollDown(metrics.maxScroll > 96 && metrics.scrollTop < metrics.maxScroll - 48);
     };
 
     const attach = () => {
       const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
-      if (attachedElement === element) {
-        update();
-        return;
-      }
-      if (attachedElement) {
-        attachedElement.removeEventListener("scroll", update);
-      }
-      attachedElement = element;
-      if (attachedElement) {
-        attachedElement.addEventListener("scroll", update, { passive: true });
+      if (attachedElement !== element) {
+        if (attachedElement) {
+          attachedElement.removeEventListener("scroll", update);
+        }
+        attachedElement = element;
+        if (attachedElement) {
+          attachedElement.addEventListener("scroll", update, { passive: true });
+        }
       }
       update();
     };
@@ -95,6 +116,16 @@ export default function MobileScrollEdgeButtons({
     attach();
     window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", attach);
+    const resizeObserver = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => update())
+      : null;
+    if (resizeObserver) {
+      resizeObserver.observe(document.documentElement);
+      const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
+      if (element) {
+        resizeObserver.observe(element);
+      }
+    }
     const observer = new MutationObserver(() => {
       cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(attach);
@@ -105,6 +136,7 @@ export default function MobileScrollEdgeButtons({
       cancelAnimationFrame(frame);
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", attach);
+      resizeObserver?.disconnect();
       observer.disconnect();
       if (attachedElement) {
         attachedElement.removeEventListener("scroll", update);
@@ -117,8 +149,7 @@ export default function MobileScrollEdgeButtons({
   }
 
   const scrollByEdge = (edge: "top" | "bottom") => {
-    const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
-    const metrics = element ? getElementMetrics(element) : getWindowMetrics();
+    const metrics = pickActiveMetrics(scrollContainerRef, scrollContainerSelector);
     metrics.scrollTo(edge === "top" ? 0 : metrics.scrollHeight);
   };
 
@@ -159,8 +190,4 @@ export default function MobileScrollEdgeButtons({
       ) : null}
     </div>
   );
-}
-
-function scrollableEnough(maxScroll: number): boolean {
-  return maxScroll > 96;
 }
