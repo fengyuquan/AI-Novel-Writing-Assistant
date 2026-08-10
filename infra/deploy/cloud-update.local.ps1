@@ -1,8 +1,9 @@
-﻿# 本机：增量编译并把更新包传到云主机
+﻿# 本机：增量编译并打包云更新（默认只打包，不自动 scp/ssh）
 # 用法示例：
 #   .\infra\deploy\cloud-update.local.ps1
-#   .\infra\deploy\cloud-update.local.ps1 -Shared -Server
-#   .\infra\deploy\cloud-update.local.ps1 -All -NoCache
+#   .\infra\deploy\cloud-update.local.ps1 -PackageOnly
+#   .\infra\deploy\cloud-update.local.ps1 -Server -Client -NoCache
+#   .\infra\deploy\cloud-update.local.ps1 -All -UploadAndRemote   # 需 SSH 免密或可交互输入密码
 #   .\infra\deploy\cloud-update.local.ps1 -HostName 220.160.32.37 -User root -RemotePath /opt/ai-novel
 
 [CmdletBinding()]
@@ -19,7 +20,11 @@ param(
   [switch]$SkipBuild,
   [switch]$SkipUpload,
   [switch]$NoCache,
-  [switch]$SkipRemote
+  [switch]$SkipRemote,
+  # 只编译打包，打印后续 scp / 云主机命令（推荐默认流程）
+  [switch]$PackageOnly,
+  # 本机打包后继续上传并远程执行（需要能交互输入密码，或已配置 SSH 免密）
+  [switch]$UploadAndRemote
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,13 +34,42 @@ function Resolve-RepoRoot {
   return (Resolve-Path (Join-Path $here "..\..")).Path
 }
 
+function Invoke-GitQuiet {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    # git 常把 CRLF 提示打到 stderr；在 ErrorActionPreference=Stop 下会被当成终止错误
+    $output = & git @Arguments 2>&1
+    $code = $LASTEXITCODE
+    $lines = @($output) | ForEach-Object {
+      if ($_ -is [System.Management.Automation.ErrorRecord]) {
+        $_.ToString()
+      } else {
+        "$_"
+      }
+    } | Where-Object {
+      $_ -and ($_ -notmatch '^(warning|hint):')
+    }
+    return [pscustomobject]@{
+      ExitCode = $code
+      Lines = $lines
+    }
+  } finally {
+    $ErrorActionPreference = $prev
+  }
+}
+
 function Test-GitDirtyPath {
   param([string]$Root, [string]$Path)
   Push-Location $Root
   try {
-    $status = git status --porcelain -- $Path 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
-    return -not [string]::IsNullOrWhiteSpace($status)
+    $result = Invoke-GitQuiet -Arguments @("status", "--porcelain", "--", $Path)
+    if ($result.ExitCode -ne 0) { return $false }
+    return ($result.Lines | Where-Object { $_ }).Count -gt 0
   } finally {
     Pop-Location
   }
@@ -45,14 +79,35 @@ function Test-GitDiffPath {
   param([string]$Root, [string]$Path)
   Push-Location $Root
   try {
-    $diff = git diff --name-only HEAD -- $Path 2>$null
-    $cached = git diff --cached --name-only -- $Path 2>$null
-    $untracked = git ls-files --others --exclude-standard -- $Path 2>$null
-    $combined = @($diff) + @($cached) + @($untracked) | Where-Object { $_ }
+    $diff = Invoke-GitQuiet -Arguments @("diff", "--name-only", "HEAD", "--", $Path)
+    $cached = Invoke-GitQuiet -Arguments @("diff", "--cached", "--name-only", "--", $Path)
+    $untracked = Invoke-GitQuiet -Arguments @("ls-files", "--others", "--exclude-standard", "--", $Path)
+    $combined = @($diff.Lines) + @($cached.Lines) + @($untracked.Lines) | Where-Object { $_ }
     return $combined.Count -gt 0
   } finally {
     Pop-Location
   }
+}
+
+function Test-GitHeadTouchesPath {
+  param([string]$Root, [string]$Path)
+  Push-Location $Root
+  try {
+    $result = Invoke-GitQuiet -Arguments @("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", "--", $Path)
+    if ($result.ExitCode -ne 0) { return $false }
+    return ($result.Lines | Where-Object { $_ }).Count -gt 0
+  } finally {
+    Pop-Location
+  }
+}
+
+function Convert-ToUnixLf([string]$Path) {
+  if (-not (Test-Path $Path)) { return }
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+  $normalized = $text -replace "`r`n", "`n" -replace "`r", "`n"
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText($Path, $normalized, $utf8NoBom)
 }
 
 function Ensure-Dir([string]$Path) {
@@ -76,6 +131,92 @@ function Copy-TreeFiltered {
   if ($code -ge 8) {
     throw "robocopy 失败：$Source -> $Destination (exit=$code)"
   }
+}
+
+function Invoke-WorkspaceBuild {
+  param(
+    [string]$Filter,
+    [string]$FallbackCommand
+  )
+  # Windows PowerShell 无法直接执行 package.json 里的 NODE_OPTIONS='...' bash 语法
+  if (-not $env:NODE_OPTIONS) {
+    $env:NODE_OPTIONS = "--max-old-space-size=4096"
+  }
+  if ($Filter -eq "@ai-novel/server") {
+    pnpm --filter @ai-novel/server exec tsc -p tsconfig.json
+    return $LASTEXITCODE
+  }
+  if ($Filter -eq "@ai-novel/client" -or $Filter -eq "client") {
+    pnpm --filter @ai-novel/client build
+    return $LASTEXITCODE
+  }
+  pnpm --filter $Filter build
+  return $LASTEXITCODE
+}
+
+function Write-NextStepCommands {
+  param(
+    [string]$RepoRoot,
+    [string]$TarPath,
+    [string]$TarName,
+    [string]$User,
+    [string]$HostName,
+    [string]$SshPort,
+    [string]$RemotePath,
+    [bool]$NoCache,
+    [bool]$NeedApi,
+    [bool]$NeedWeb
+  )
+
+  $sshTarget = "${User}@${HostName}"
+  $remoteIncoming = "$RemotePath/data/cloud/incoming"
+  $localRemoteSh = Join-Path $RepoRoot "infra\deploy\cloud-update.remote.sh"
+  $localCloudEnv = Join-Path $RepoRoot "infra\deploy\cloud.env"
+  $remotePackageArg = "--package data/cloud/incoming/$TarName"
+  if ($NoCache) { $remotePackageArg += " --no-cache" }
+
+  Write-Host ""
+  Write-Host "========== 下一步：本机上传（PowerShell） ==========" -ForegroundColor Cyan
+  Write-Host "请使用 scp.exe / ssh.exe（不要用 cp，PowerShell 会当成 Copy-Item）。"
+  Write-Host ""
+  Write-Host "scp.exe -P $SshPort ``"
+  Write-Host "  `"$TarPath`" ``"
+  Write-Host "  ${sshTarget}:${remoteIncoming}/"
+  Write-Host ""
+  Write-Host "scp.exe -P $SshPort ``"
+  Write-Host "  `"$localRemoteSh`" ``"
+  Write-Host "  ${sshTarget}:${RemotePath}/infra/deploy/cloud-update.remote.sh"
+  if (Test-Path $localCloudEnv) {
+    Write-Host ""
+    Write-Host "# 若本次改了 API_JSON_LIMIT 等云端环境变量，再传："
+    Write-Host "scp.exe -P $SshPort ``"
+    Write-Host "  `"$localCloudEnv`" ``"
+    Write-Host "  ${sshTarget}:${RemotePath}/infra/deploy/cloud.env"
+  }
+
+  Write-Host ""
+  Write-Host "========== 下一步：登录云主机 ==========" -ForegroundColor Cyan
+  Write-Host "ssh.exe -p $SshPort $sshTarget"
+
+  Write-Host ""
+  Write-Host "========== 下一步：云主机执行 ==========" -ForegroundColor Cyan
+  Write-Host "cd $RemotePath"
+  Write-Host "chmod +x infra/deploy/cloud-update.remote.sh"
+  Write-Host "bash infra/deploy/cloud-update.remote.sh $remotePackageArg"
+  if ($NeedApi -and (Test-Path $localCloudEnv)) {
+    Write-Host ""
+    Write-Host "# 若刚更新了 cloud.env，再让 API 重新读环境变量："
+    Write-Host "bash infra/deploy/cloud-update.remote.sh --server"
+  }
+
+  Write-Host ""
+  Write-Host "========== 验收 ==========" -ForegroundColor Cyan
+  Write-Host "docker ps --filter name=ai-novel-"
+  Write-Host "docker logs ai-novel-api --tail 50"
+  Write-Host "curl -sS -u '用户名:密码' http://127.0.0.1:5173/api/health"
+  Write-Host "docker exec ai-novel-api wget -qO- http://127.0.0.1:3000/api/health"
+  Write-Host ""
+  Write-Host ("范围提示：needApi={0} needWeb={1}" -f $NeedApi, $NeedWeb)
 }
 
 $repoRoot = Resolve-RepoRoot
@@ -109,6 +250,18 @@ if (-not $HostName) {
   $HostName = "220.160.32.37"
 }
 
+# 默认：只打包。需要全自动上传时显式传 -UploadAndRemote
+if ($PackageOnly -and $UploadAndRemote) {
+  throw "不能同时使用 -PackageOnly 与 -UploadAndRemote"
+}
+if (-not $UploadAndRemote) {
+  $PackageOnly = $true
+}
+if ($PackageOnly) {
+  $SkipUpload = $true
+  $SkipRemote = $true
+}
+
 # 默认 Auto：按 git 变更决定打包范围；都没变则按 shared+server（最常见后端更新）
 if (-not ($Shared -or $Server -or $Client -or $All -or $Auto)) {
   $Auto = $true
@@ -134,6 +287,20 @@ if ($Auto) {
   if ($clientChanged -or $infraChanged) { $Client = $true }
 
   if (-not ($Shared -or $Server -or $Client)) {
+    # 工作区干净时，按最近一次提交触及的路径推断（适合：先 commit 再打包）
+    $sharedChanged = Test-GitHeadTouchesPath $repoRoot "shared"
+    $serverChanged = Test-GitHeadTouchesPath $repoRoot "server"
+    $clientChanged = Test-GitHeadTouchesPath $repoRoot "client"
+    $infraChanged = (Test-GitHeadTouchesPath $repoRoot "infra/deploy") `
+      -or (Test-GitHeadTouchesPath $repoRoot "infra/nginx") `
+      -or (Test-GitHeadTouchesPath $repoRoot "Dockerfile.api.prebuilt") `
+      -or (Test-GitHeadTouchesPath $repoRoot "Dockerfile.web.prebuilt")
+    if ($sharedChanged) { $Shared = $true }
+    if ($serverChanged -or $sharedChanged) { $Server = $true }
+    if ($clientChanged -or $infraChanged) { $Client = $true }
+  }
+
+  if (-not ($Shared -or $Server -or $Client)) {
     Write-Host "未检测到明显变更，默认打包 shared + server（后端热修场景）。" -ForegroundColor Yellow
     $Shared = $true
     $Server = $true
@@ -150,23 +317,24 @@ $needWeb = [bool]$Client
 
 Write-Host "==> 更新范围" -ForegroundColor Cyan
 Write-Host ("  shared={0} server={1} client={2}" -f $Shared, $Server, $Client)
+Write-Host ("  模式={0}" -f $(if ($PackageOnly) { "PackageOnly（只编译打包）" } else { "UploadAndRemote（打包后上传并远程执行）" }))
 Write-Host ('  目标 {0}@{1}:{2}  远程目录 {3}' -f $User, $HostName, $SshPort, $RemotePath)
 
 if (-not $SkipBuild) {
   if ($Shared) {
     Write-Host "==> build shared" -ForegroundColor Cyan
-    pnpm --filter @ai-novel/shared build
-    if ($LASTEXITCODE -ne 0) { throw "shared build failed" }
+    $code = Invoke-WorkspaceBuild -Filter "@ai-novel/shared"
+    if ($code -ne 0) { throw "shared build failed" }
   }
   if ($Server) {
     Write-Host "==> build server" -ForegroundColor Cyan
-    pnpm --filter @ai-novel/server build
-    if ($LASTEXITCODE -ne 0) { throw "server build failed" }
+    $code = Invoke-WorkspaceBuild -Filter "@ai-novel/server"
+    if ($code -ne 0) { throw "server build failed" }
   }
   if ($Client) {
     Write-Host "==> build client" -ForegroundColor Cyan
-    pnpm --filter client build
-    if ($LASTEXITCODE -ne 0) { throw "client build failed" }
+    $code = Invoke-WorkspaceBuild -Filter "@ai-novel/client"
+    if ($code -ne 0) { throw "client build failed" }
   }
 }
 
@@ -212,6 +380,9 @@ Copy-Item (Join-Path $repoRoot "infra/deploy/cloud-update.remote.sh") (Join-Path
 Copy-Item (Join-Path $repoRoot "infra/nginx/ai-novel-cloud.conf") (Join-Path $payloadRoot "infra/nginx/ai-novel-cloud.conf") -Force
 Copy-Item (Join-Path $repoRoot "Dockerfile.api.prebuilt") (Join-Path $payloadRoot "Dockerfile.api.prebuilt") -Force
 Copy-Item (Join-Path $repoRoot "Dockerfile.web.prebuilt") (Join-Path $payloadRoot "Dockerfile.web.prebuilt") -Force
+# Windows checkout may keep CRLF; Linux entrypoint must be LF or the container crash-loops.
+Convert-ToUnixLf (Join-Path $payloadRoot "infra/deploy/api-entrypoint-sqlite.sh")
+Convert-ToUnixLf (Join-Path $payloadRoot "infra/deploy/cloud-update.remote.sh")
 $manifest.includes += @(
   "infra/deploy/api-entrypoint-sqlite.sh",
   "infra/deploy/cloud-update.remote.sh",
@@ -244,29 +415,41 @@ if (-not $SkipUpload) {
   $remoteIncoming = "$RemotePath/data/cloud/incoming"
   Write-Host "==> 上传到 ${User}@${HostName}:$remoteIncoming" -ForegroundColor Cyan
   $sshTarget = "${User}@${HostName}"
-  & ssh -p $SshPort $sshTarget "mkdir -p '$remoteIncoming' '$RemotePath/infra/deploy'"
+  # 显式 scp.exe/ssh.exe，避免 PowerShell 把 scp/cp 解析错
+  & ssh.exe -p $SshPort $sshTarget "mkdir -p '$remoteIncoming' '$RemotePath/infra/deploy'"
   if ($LASTEXITCODE -ne 0) { throw "ssh mkdir 失败" }
 
-  # 先保证远程有更新脚本（首次部署或脚本本身有改动时）
-  & scp -P $SshPort (Join-Path $repoRoot "infra/deploy/cloud-update.remote.sh") `
+  Convert-ToUnixLf (Join-Path $repoRoot "infra/deploy/cloud-update.remote.sh")
+  & scp.exe -P $SshPort (Join-Path $repoRoot "infra/deploy/cloud-update.remote.sh") `
     "${sshTarget}:${RemotePath}/infra/deploy/cloud-update.remote.sh"
   if ($LASTEXITCODE -ne 0) { throw "上传 remote 脚本失败" }
 
-  & scp -P $SshPort $tarPath "${sshTarget}:${remoteIncoming}/$tarName"
+  & scp.exe -P $SshPort $tarPath "${sshTarget}:${remoteIncoming}/$tarName"
   if ($LASTEXITCODE -ne 0) { throw "scp 更新包失败" }
 
   if (-not $SkipRemote) {
     Write-Host "==> 远程执行 cloud-update.remote.sh" -ForegroundColor Cyan
     $remoteCmd = "chmod +x '$RemotePath/infra/deploy/cloud-update.remote.sh'; cd '$RemotePath' && bash infra/deploy/cloud-update.remote.sh --package 'data/cloud/incoming/$tarName'"
     if ($NoCache) { $remoteCmd += " --no-cache" }
-    & ssh -p $SshPort $sshTarget $remoteCmd
+    & ssh.exe -p $SshPort $sshTarget $remoteCmd
     if ($LASTEXITCODE -ne 0) { throw "远程更新失败" }
-  } else {
-    Write-Host "已跳过远程执行。请在云主机运行：" -ForegroundColor Yellow
-    Write-Host ("  cd {0}; bash infra/deploy/cloud-update.remote.sh --package data/cloud/incoming/{1}" -f $RemotePath, $tarName)
   }
 }
 
 Write-Host "==> 完成本地步骤" -ForegroundColor Green
 Write-Host ("本地暂存：{0}" -f $stageRoot)
 Write-Host ("更新包：{0}" -f $tarPath)
+
+if ($PackageOnly -or $SkipUpload -or $SkipRemote) {
+  Write-NextStepCommands `
+    -RepoRoot $repoRoot `
+    -TarPath $tarPath `
+    -TarName $tarName `
+    -User $User `
+    -HostName $HostName `
+    -SshPort $SshPort `
+    -RemotePath $RemotePath `
+    -NoCache:([bool]$NoCache) `
+    -NeedApi:$needApi `
+    -NeedWeb:$needWeb
+}

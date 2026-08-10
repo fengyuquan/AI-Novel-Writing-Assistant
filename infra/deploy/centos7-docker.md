@@ -154,28 +154,32 @@ docker stats
 
 ### 更新代码
 
-推荐用增量更新脚本（本机编译 + 只传变更包 + 云端重建容器）：
+推荐流程：**本机只编译打包**，再由你在本机终端上传、在云主机执行（避免 Agent/非交互环境卡在 SSH 密码）。
 
 本机 PowerShell：
 
 ```powershell
-# 可选：复制并编辑连接配置
+# 可选：复制并编辑连接配置（只影响打印出来的主机地址）
 copy infra\deploy\cloud-update.local.env.example infra\deploy\cloud-update.local.env
 
-# 自动判断变更范围，打包上传并触发云端更新
+# 默认：只编译打包，结束后打印 scp / ssh / 云主机命令
 .\infra\deploy\cloud-update.local.ps1
 
-# 强制后端 / 全量 / 不使用 Docker 缓存
-.\infra\deploy\cloud-update.local.ps1 -Shared -Server -NoCache
+# 指定范围 / 不使用 Docker 缓存（仍只打包）
+.\infra\deploy\cloud-update.local.ps1 -Server -Client -NoCache
 .\infra\deploy\cloud-update.local.ps1 -All -NoCache
+
+# 若已配置 SSH 免密，或当前终端可交互输入密码，才用全自动：
+.\infra\deploy\cloud-update.local.ps1 -UploadAndRemote -All -NoCache
 ```
 
-云主机（若本机加了 `-SkipRemote`，再手动执行）：
+脚本结束会打印：
 
-```bash
-cd /opt/ai-novel
-bash infra/deploy/cloud-update.remote.sh --package data/cloud/incoming/ai-novel-cloud-update-XXXX.tgz --no-cache
-```
+1. 本机 `scp.exe` 上传更新包 / remote 脚本（必要时还有 `cloud.env`）
+2. `ssh.exe` 登录命令
+3. 云主机 `bash infra/deploy/cloud-update.remote.sh --package ...` 命令
+
+云主机脚本 **`cloud-update.remote.sh` 一般不用改**；它负责解包、备份库、重建并重启容器。
 
 也可用旧的 compose 全量方式：
 
