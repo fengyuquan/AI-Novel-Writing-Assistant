@@ -31,6 +31,36 @@ function sessionId(session: LlmLiveSessionSnapshot): string {
   return session.context.interactionId;
 }
 
+const FAB_POS_STORAGE_KEY = "live-execution-fab-pos";
+
+function readFabPosition(): { left: number; top: number } | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(FAB_POS_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { left?: unknown; top?: unknown };
+    if (typeof parsed.left !== "number" || typeof parsed.top !== "number") {
+      return null;
+    }
+    return { left: parsed.left, top: parsed.top };
+  } catch {
+    return null;
+  }
+}
+
+function clampFabPosition(left: number, top: number, size = 40): { left: number; top: number } {
+  const maxLeft = Math.max(8, window.innerWidth - size - 8);
+  const maxTop = Math.max(8, window.innerHeight - size - 8);
+  return {
+    left: Math.min(maxLeft, Math.max(8, left)),
+    top: Math.min(maxTop, Math.max(8, top)),
+  };
+}
+
 interface LiveExecutionDialogProps {
   compact?: boolean;
   className?: string;
@@ -44,9 +74,15 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [followingLatest, setFollowingLatest] = useState(true);
   const [collapsedSessionIds, setCollapsedSessionIds] = useState<Set<string>>(() => new Set());
+  const isFloatingTrigger = Boolean(props.className?.includes("fixed"));
+  const [fabPos, setFabPos] = useState<{ left: number; top: number } | null>(() => (
+    isFloatingTrigger ? readFabPosition() : null
+  ));
   const logRef = useRef<HTMLDivElement | null>(null);
   const latestSessionRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{ pointerX: number; pointerY: number; offsetX: number; offsetY: number } | null>(null);
+  const fabDragRef = useRef<{ pointerX: number; pointerY: number; left: number; top: number } | null>(null);
+  const fabMovedRef = useRef(false);
   const followLatestRef = useRef(true);
   const latestSessionIdRef = useRef<string | null>(null);
   const autoOpenedSessionIdsRef = useRef(new Set<string>());
@@ -160,15 +196,85 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
     setFollowingLatest(true);
   };
 
+  useEffect(() => {
+    if (!isFloatingTrigger || !fabPos) {
+      return;
+    }
+    const onResize = () => {
+      setFabPos((current) => (current ? clampFabPosition(current.left, current.top) : current));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [fabPos, isFloatingTrigger]);
+
   return (
     <>
       <Button
         type="button"
         size="sm"
         variant="outline"
-        className={cn("relative", props.className)}
-        onClick={() => handleOpenChange(true)}
-        title="查看 AI 创作实况"
+        className={cn(
+          "relative",
+          props.className,
+          isFloatingTrigger && "cursor-grab touch-none active:cursor-grabbing",
+          isFloatingTrigger && fabPos && "!right-auto !top-auto",
+        )}
+        style={isFloatingTrigger && fabPos
+          ? { position: "fixed", left: fabPos.left, top: fabPos.top, zIndex: 50 }
+          : undefined}
+        onPointerDown={(event) => {
+          if (!isFloatingTrigger || event.button !== 0) {
+            return;
+          }
+          const rect = event.currentTarget.getBoundingClientRect();
+          fabMovedRef.current = false;
+          fabDragRef.current = {
+            pointerX: event.clientX,
+            pointerY: event.clientY,
+            left: rect.left,
+            top: rect.top,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const start = fabDragRef.current;
+          if (!start) {
+            return;
+          }
+          const dx = event.clientX - start.pointerX;
+          const dy = event.clientY - start.pointerY;
+          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+            fabMovedRef.current = true;
+          }
+          const next = clampFabPosition(start.left + dx, start.top + dy);
+          setFabPos(next);
+        }}
+        onPointerUp={() => {
+          if (fabDragRef.current) {
+            setFabPos((current) => {
+              if (current) {
+                try {
+                  window.localStorage.setItem(FAB_POS_STORAGE_KEY, JSON.stringify(current));
+                } catch {
+                  // ignore storage failures
+                }
+              }
+              return current;
+            });
+          }
+          fabDragRef.current = null;
+        }}
+        onPointerCancel={() => {
+          fabDragRef.current = null;
+        }}
+        onClick={() => {
+          if (fabMovedRef.current) {
+            fabMovedRef.current = false;
+            return;
+          }
+          handleOpenChange(true);
+        }}
+        title={isFloatingTrigger ? "查看 AI 创作实况（可拖动）" : "查看 AI 创作实况"}
       >
         <Radio className={activeCount > 0 ? "mr-1.5 h-3.5 w-3.5 animate-pulse text-primary" : "mr-1.5 h-3.5 w-3.5"} aria-hidden="true" />
         {!props.compact ? <span className="hidden sm:inline">AI 实况</span> : null}

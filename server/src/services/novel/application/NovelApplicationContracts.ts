@@ -72,6 +72,13 @@ export interface NovelApplicationServices {
   analyzeStorylineImpact: NovelApplicationMethod;
   previewChapterRewrite: NovelApplicationMethod;
   previewChapterAiRevision: NovelApplicationMethod;
+  detectChapterAiWriting: NovelApplicationMethod;
+  listChapterStyleBenchmarkSources: NovelApplicationMethod;
+  rewriteChapterStyleBenchmark: NovelApplicationMethod;
+  compareChapterStyleBenchmark: NovelApplicationMethod;
+  getChapterStyleBenchmarkCache: NovelApplicationMethod;
+  saveChapterStyleBenchmarkCache: NovelApplicationMethod;
+  clearChapterStyleBenchmarkCache: NovelApplicationMethod;
   getChapterEditorWorkspace: NovelApplicationMethod;
   getNovelState: NovelApplicationMethod;
   getLatestStateSnapshot: NovelApplicationMethod;
@@ -194,6 +201,13 @@ export const novelApplicationServiceMethodNames = [
   "analyzeStorylineImpact",
   "previewChapterRewrite",
   "previewChapterAiRevision",
+  "detectChapterAiWriting",
+  "listChapterStyleBenchmarkSources",
+  "rewriteChapterStyleBenchmark",
+  "compareChapterStyleBenchmark",
+  "getChapterStyleBenchmarkCache",
+  "saveChapterStyleBenchmarkCache",
+  "clearChapterStyleBenchmarkCache",
   "getChapterEditorWorkspace",
   "getNovelState",
   "getLatestStateSnapshot",

@@ -24,6 +24,7 @@ import { outlineImportService } from "../volume/OutlineImportService";
 import { outlineImportConflictService } from "../volume/OutlineImportConflictService";
 import { outlineCreateBootstrapService } from "../volume/OutlineCreateBootstrapService";
 import { NovelChapterEditorService } from "../chapterEditor/NovelChapterEditorService";
+import { ChapterEditorStyleBenchmarkService } from "../chapterEditor/ChapterEditorStyleBenchmarkService";
 import { ChapterEditorWorkspaceService } from "../chapterEditor/ChapterEditorWorkspaceService";
 import type { NovelApplicationServices } from "./NovelApplicationContracts";
 import type { NovelSnapshotListItem } from "@ai-novel/shared/types/novel";
@@ -59,6 +60,7 @@ export class DefaultNovelApplicationServices {
   private readonly volumeService = new NovelVolumeService();
   private readonly chapterEditorWorkspaceService = new ChapterEditorWorkspaceService();
   private readonly chapterEditorService = new NovelChapterEditorService();
+  private readonly chapterEditorStyleBenchmarkService = new ChapterEditorStyleBenchmarkService();
   private readonly chapterRuntimeCoordinator = new ChapterRuntimeCoordinator();
   private readonly qualityRepairCoordinator = new ChapterRuntimeCoordinator({
     reviewChapterAfterRepair: (novelId, chapterId, options) => this.core.reviewChapter(novelId, chapterId, options),
@@ -473,6 +475,46 @@ export class DefaultNovelApplicationServices {
 
   previewChapterAiRevision(...args: Parameters<NovelChapterEditorService["previewAiRevision"]>) {
     return this.chapterEditorService.previewAiRevision(...args);
+  }
+
+  detectChapterAiWriting(...args: Parameters<NovelChapterEditorService["detectAiWriting"]>) {
+    return this.chapterEditorService.detectAiWriting(...args);
+  }
+
+  listChapterStyleBenchmarkSources(
+    ...args: Parameters<ChapterEditorStyleBenchmarkService["listSources"]>
+  ) {
+    return this.chapterEditorStyleBenchmarkService.listSources(...args);
+  }
+
+  rewriteChapterStyleBenchmark(
+    ...args: Parameters<ChapterEditorStyleBenchmarkService["rewriteChapter"]>
+  ) {
+    return this.chapterEditorStyleBenchmarkService.rewriteChapter(...args);
+  }
+
+  compareChapterStyleBenchmark(
+    ...args: Parameters<ChapterEditorStyleBenchmarkService["compareChapter"]>
+  ) {
+    return this.chapterEditorStyleBenchmarkService.compareChapter(...args);
+  }
+
+  getChapterStyleBenchmarkCache(
+    ...args: Parameters<ChapterEditorStyleBenchmarkService["getCache"]>
+  ) {
+    return this.chapterEditorStyleBenchmarkService.getCache(...args);
+  }
+
+  saveChapterStyleBenchmarkCache(
+    ...args: Parameters<ChapterEditorStyleBenchmarkService["saveCache"]>
+  ) {
+    return this.chapterEditorStyleBenchmarkService.saveCache(...args);
+  }
+
+  clearChapterStyleBenchmarkCache(
+    ...args: Parameters<ChapterEditorStyleBenchmarkService["clearCache"]>
+  ) {
+    return this.chapterEditorStyleBenchmarkService.clearCache(...args);
   }
 
   getChapterEditorWorkspace(...args: Parameters<ChapterEditorWorkspaceService["getWorkspace"]>) {

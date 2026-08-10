@@ -110,6 +110,24 @@ export function registerNovelReviewRoutes(input: RegisterNovelReviewRoutesInput)
   );
 
   router.post(
+    "/:id/chapters/:chapterId/audit/mode_fit",
+    validate({ params: chapterParamsSchema, body: reviewSchema }),
+    async (req, res, next) => {
+      try {
+        const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+        const data = await novelService.auditChapter(id, chapterId, "mode_fit", req.body as any);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "Mode-fit audit completed.",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
     "/:id/chapters/:chapterId/audit/full",
     validate({ params: chapterParamsSchema, body: reviewSchema }),
     async (req, res, next) => {

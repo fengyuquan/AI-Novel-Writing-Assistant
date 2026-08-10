@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 18% 96%;
+  --foreground: 220 22% 14%;
+  --primary: 210 24% 20%;
+  --primary-foreground: 210 40% 98%;
+  --muted: 210 14% 91%;
+  --muted-foreground: 215 12% 40%;
+  --accent: 200 22% 92%;
+  --accent-foreground: 210 24% 18%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 16% 86%;
+  --input: 214 16% 86%;
+  --ring: 200 35% 36%;
+  --radius: 0.55rem;
+  --reader-bg: 210 20% 97%;
+  --reader-ink: 222 24% 12%;
+  --card-surface: 0 0% 100%;
+  --status-failed: 0 70% 46%;
+  --status-running: 200 70% 38%;
+  --status-succeeded: 152 45% 32%;
+  --status-queued: 215 12% 46%;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.reader-prose {
+  font-family: "Source Serif 4", "Noto Serif SC", "Songti SC", Georgia, serif;
+  color: hsl(var(--reader-ink));
+  background: hsl(var(--reader-bg));
+  font-size: 1.05rem;
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+}
+
+.reader-prose p {
+  margin: 0 0 1.15em;
+  text-indent: 2em;
+}
+
+.reader-prose p:first-child {
+  margin-top: 0;
+}
+
+.status-pill {
+  @apply inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium;
+}
+
+.status-pill[data-tone="failed"] {
+  background: hsl(var(--status-failed) / 0.12);
+  color: hsl(var(--status-failed));
+}
+
+.status-pill[data-tone="running"] {
+  background: hsl(var(--status-running) / 0.12);
+  color: hsl(var(--status-running));
+}
+
+.status-pill[data-tone="succeeded"] {
+  background: hsl(var(--status-succeeded) / 0.12);
+  color: hsl(var(--status-succeeded));
+}
+
+.status-pill[data-tone="queued"] {
+  background: hsl(var(--status-queued) / 0.12);
+  color: hsl(var(--status-queued));
+}

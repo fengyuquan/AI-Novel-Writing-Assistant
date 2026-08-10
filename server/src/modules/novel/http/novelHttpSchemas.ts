@@ -234,6 +234,11 @@ export const updateChapterSchema = z.object({
   characterScore: z.number().int().min(0).max(100).nullable().optional(),
   pacingScore: z.number().int().min(0).max(100).nullable().optional(),
   riskFlags: z.string().nullable().optional(),
+  /**
+   * When false, only persist chapter fields (fast path for frequent editor saves).
+   * When true/omitted, also sync chapter artifacts, volume mirror, and RAG upsert.
+   */
+  syncArtifacts: z.boolean().optional(),
 });
 
 export const characterSchema = z.object({
@@ -562,6 +567,51 @@ export const rewritePreviewSchema = z.object({
   provider: llmProviderSchema.optional(),
   model: z.string().trim().max(120).optional(),
   temperature: z.number().min(0).max(2).optional(),
+});
+
+export const aiWritingDetectSchema = z.object({
+  content: z.string().optional(),
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  includeDeterministic: z.boolean().optional(),
+});
+
+export const styleBenchmarkReferenceSchema = z.object({
+  kind: z.enum(["style_profile", "knowledge_document", "novel"]),
+  id: z.string().trim().min(1).max(120),
+});
+
+export const styleBenchmarkRewriteSchema = z.object({
+  content: z.string().optional(),
+  reference: styleBenchmarkReferenceSchema,
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+
+export const styleBenchmarkCompareSchema = z.object({
+  userContent: z.string().trim().min(1),
+  benchmarkContent: z.string().trim().min(1),
+  reference: styleBenchmarkReferenceSchema.optional(),
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+
+export const styleBenchmarkCacheSaveSchema = z.object({
+  session: z.object({
+    version: z.number().int().min(1).max(20),
+    novelId: z.string().trim().min(1).max(120),
+    chapterId: z.string().trim().min(1).max(120),
+    selectedSourceKey: z.string().max(240).default(""),
+    benchmarks: z.array(z.unknown()).max(12),
+    compareBySessionId: z.record(z.string(), z.unknown()).default({}),
+    activeSessionIds: z.array(z.string().trim().min(1).max(120)).max(4).default([]),
+    focusedSessionId: z.string().trim().min(1).max(120).nullable().default(null),
+    layoutColumns: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),
+    updatedAt: z.string().trim().min(1).max(80),
+  }),
 });
 
 export const aiRevisionPreviewSchema = z.object({

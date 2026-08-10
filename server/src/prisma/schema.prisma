@@ -395,6 +395,7 @@ model Novel {
   bible             NovelBible?
   plotBeats         PlotBeat[]
   chapterSummaries  ChapterSummary[]
+  chapterStyleBenchmarkCaches ChapterStyleBenchmarkCache[]
   facts             ConsistencyFact[]
   generationJobs    GenerationJob[]
   agentRuns          AgentRun[]
@@ -681,6 +682,7 @@ model Chapter {
   novelId         String
   novel           Novel                  @relation(fields: [novelId], references: [id], onDelete: Cascade)
   chapterSummary  ChapterSummary?
+  styleBenchmarkCache ChapterStyleBenchmarkCache?
   characterTimelines CharacterTimeline[]
   characterCandidates CharacterCandidate[] @relation("CharacterCandidateSourceChapter")
   characterFactionTracks CharacterFactionTrack[]
@@ -1868,6 +1870,23 @@ model ChapterSummary {
   updatedAt       DateTime @updatedAt
 
   @@index([novelId])
+}
+
+/// 章节范本对照缓存：多范文版本 + 点评结果，与章节 1:1 绑定。
+model ChapterStyleBenchmarkCache {
+  id                String   @id @default(cuid())
+  novelId           String
+  chapterId         String   @unique
+  version           Int      @default(2)
+  selectedSourceKey String?
+  sessionJson       String
+  novel             Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapter           Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([novelId, chapterId])
+  @@index([novelId, updatedAt])
 }
 
 model ConsistencyFact {

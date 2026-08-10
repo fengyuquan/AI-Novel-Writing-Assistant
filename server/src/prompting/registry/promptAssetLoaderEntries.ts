@@ -438,6 +438,18 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/chapterEditor/rewriteCandidates.prompts").chapterEditorRewriteCandidatesPrompt as UnknownPromptAsset,
   },
   {
+    key: "novel.chapter_editor.ai_writing_detect@v1",
+    load: () => require("../prompts/novel/chapterEditor/aiWritingDetect.prompts").chapterEditorAiWritingDetectPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.chapter_editor.style_benchmark_rewrite@v1",
+    load: () => require("../prompts/novel/chapterEditor/styleBenchmark.prompts").chapterEditorStyleBenchmarkRewritePrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.chapter_editor.style_benchmark_compare@v1",
+    load: () => require("../prompts/novel/chapterEditor/styleBenchmark.prompts").chapterEditorStyleBenchmarkComparePrompt as UnknownPromptAsset,
+  },
+  {
     key: "novel.review.chapter@v2",
     load: () => require("../prompts/novel/review.prompts").chapterReviewPrompt as UnknownPromptAsset,
   },

@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Value } from "platejs";
 import { ParagraphPlugin, Plate, PlateContent, usePlateEditor } from "platejs/react";
+import { toast } from "@/components/ui/toast";
 import type { ChapterEditorDiffChunk } from "@ai-novel/shared/types/novel";
+import ChapterEditorSurfaceToolbar from "./ChapterEditorSurfaceToolbar";
 import type { ChapterEditorSelectionRange, SelectionToolbarPosition } from "./chapterEditorTypes";
 import {
   buildSelectionRangeFromValue,
   buildToolbarPosition,
+  getCaretOffsetFromValue,
   getParagraphIndicesForRange,
   normalizeChapterContent,
   normalizeEditorText,
@@ -13,6 +16,12 @@ import {
   toPlainText,
   toPlateValue,
 } from "./chapterEditorUtils";
+import {
+  loadDisplayPrefs,
+  saveDisplayPrefs,
+  type ChapterEditorDisplayPrefs,
+} from "./aids/writingAidsStorage";
+import { useChapterEditorSpeech } from "./hooks/useChapterEditorSpeech";
 
 type ChapterEditorPreview =
   | {
@@ -41,16 +50,32 @@ type ChapterEditorPreview =
 interface ChapterTextEditorProps {
   value: string;
   readOnly?: boolean;
+  selection?: ChapterEditorSelectionRange | null;
   onChange: (next: string) => void;
   onSelectionChange: (selection: ChapterEditorSelectionRange | null, position: SelectionToolbarPosition | null) => void;
   preview?: ChapterEditorPreview | null;
   focusRange?: Pick<ChapterEditorSelectionRange, "from" | "to"> | null;
+  /** When true, omit outer card chrome so parent can own border/status bar. */
+  embedded?: boolean;
 }
 
-const EDITOR_BODY_CLASS_NAME = "prose prose-sm max-w-none min-w-0 overflow-hidden break-words text-[15px] leading-8 dark:prose-invert [&_code]:break-all [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words";
+/** Plate ParagraphPlugin renders blocks as div.slate-p, not native <p>. */
+const PARAGRAPH_NODE_SELECTOR = ":scope > .slate-p, :scope > p";
+const EDITOR_BODY_CLASS_NAME = "prose prose-sm max-w-none min-w-0 overflow-hidden break-words dark:prose-invert [&_code]:break-all [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_.slate-p]:my-0 [&_.slate-p:last-child]:mb-0 [&_p]:my-0 [&_p:last-child]:mb-0";
 const INLINE_PREVIEW_BODY_CLASS_NAME = `${EDITOR_BODY_CLASS_NAME} whitespace-pre-wrap`;
-const READONLY_BODY_CLASS_NAME = "min-w-0 break-words text-[15px] leading-8";
+const READONLY_BODY_CLASS_NAME = "min-w-0 break-words";
 const SURFACE_INNER_PADDING_CLASS_NAME = "pl-14";
+const PARAGRAPH_GAP_CLASS_NAME = "[&_.slate-p]:mb-[var(--editor-paragraph-gap)] [&_p]:mb-[var(--editor-paragraph-gap)]";
+const FOCUS_PARAGRAPH_CLASSES = ["bg-sky-100/90", "ring-1", "ring-sky-200", "rounded-xl"] as const;
+const SPEAKING_PARAGRAPH_CLASSES = ["bg-amber-100/90", "ring-1", "ring-amber-200", "rounded-xl"] as const;
+
+function buildEditorSurfaceStyle(prefs: ChapterEditorDisplayPrefs): CSSProperties {
+  return {
+    fontSize: `${prefs.fontSize}px`,
+    lineHeight: String(prefs.lineHeight),
+    ["--editor-paragraph-gap" as string]: `${prefs.paragraphGap}px`,
+  };
+}
 
 function splitDisplayParagraphs(text: string): string[] {
   const normalized = normalizeChapterContent(text);
@@ -60,17 +85,17 @@ function splitDisplayParagraphs(text: string): string[] {
   return normalized.split(/\n{2,}/).map((paragraph) => paragraph.trim()).filter(Boolean);
 }
 
-function TextBlock(props: { text: string; className?: string }) {
-  const { text, className } = props;
+function TextBlock(props: { text: string; className?: string; style?: CSSProperties }) {
+  const { text, className, style } = props;
   const paragraphs = splitDisplayParagraphs(text);
   if (paragraphs.length === 0) {
     return null;
   }
 
   return (
-    <div className={`${READONLY_BODY_CLASS_NAME} ${className ?? ""}`.trim()}>
+    <div className={`${READONLY_BODY_CLASS_NAME} ${className ?? ""}`.trim()} style={style}>
       {paragraphs.map((paragraph, index) => (
-        <p key={`${index}:${paragraph.slice(0, 16)}`} className="mb-6 last:mb-0">
+        <p key={`${index}:${paragraph.slice(0, 16)}`} className="mb-[var(--editor-paragraph-gap)] last:mb-0">
           {paragraph}
         </p>
       ))}
@@ -81,11 +106,15 @@ function TextBlock(props: { text: string; className?: string }) {
 function getParagraphElements(surface: HTMLDivElement): HTMLElement[] {
   const richTextRoot = surface.querySelector('[contenteditable="true"]') as HTMLDivElement | null;
   const searchRoot = richTextRoot ?? surface;
-  const candidates = Array.from(
-    searchRoot.querySelectorAll<HTMLElement>('[data-slate-node="element"], p'),
-  );
+  const directBlocks = Array.from(searchRoot.querySelectorAll<HTMLElement>(PARAGRAPH_NODE_SELECTOR));
+  if (directBlocks.length > 0) {
+    return directBlocks.filter((node) => Boolean(node.textContent?.trim()) || directBlocks.length === 1);
+  }
 
-  return candidates.filter((node) => node.textContent?.trim());
+  // Fallback for preview/readonly surfaces that nest paragraph nodes.
+  return Array.from(searchRoot.querySelectorAll<HTMLElement>(".slate-p, p")).filter(
+    (node) => Boolean(node.textContent?.trim()) && !node.querySelector(".slate-p, p"),
+  );
 }
 
 function renderDiffChunk(chunk: ChapterEditorDiffChunk) {
@@ -161,13 +190,29 @@ function renderBlockPreview(
 }
 
 export default function ChapterTextEditor(props: ChapterTextEditorProps) {
-  const { value, readOnly = false, onChange, onSelectionChange, preview, focusRange = null } = props;
+  const {
+    value,
+    readOnly = false,
+    selection = null,
+    onChange,
+    onSelectionChange,
+    preview,
+    focusRange = null,
+  } = props;
   const [editorSeed, setEditorSeed] = useState(0);
   const [internalText, setInternalText] = useState(() => normalizeChapterContent(value));
+  const [displayPrefs, setDisplayPrefs] = useState<ChapterEditorDisplayPrefs>(() => loadDisplayPrefs());
+  const [caretOffset, setCaretOffset] = useState<number | null>(null);
   const [paragraphMarkerOffsets, setParagraphMarkerOffsets] = useState<Array<{ index: number; top: number }>>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const isUserEditingRef = useRef(false);
+  const surfaceStyle = useMemo(() => buildEditorSurfaceStyle(displayPrefs), [displayPrefs]);
+  const speech = useChapterEditorSpeech({
+    content: value,
+    selection,
+    caretOffset,
+  });
 
   const editor = usePlateEditor(
     {
@@ -194,9 +239,17 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
 
   const updateSelection = useCallback(() => {
     if (!editor || preview || readOnly) {
+      setCaretOffset(null);
       onSelectionChange(null, null);
       return;
     }
+
+    const editorSelection = editor.selection as {
+      anchor: { path: number[]; offset: number };
+      focus: { path: number[]; offset: number };
+    } | null;
+    const nextCaret = getCaretOffsetFromValue(editor.children as Value, editorSelection);
+    setCaretOffset(nextCaret);
 
     const selectionObject = globalThis.window?.getSelection?.();
     const surface = surfaceRef.current;
@@ -211,10 +264,7 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
       return;
     }
 
-    const selectionRange = buildSelectionRangeFromValue(editor.children as Value, editor.selection as {
-      anchor: { path: number[]; offset: number };
-      focus: { path: number[]; offset: number };
-    } | null);
+    const selectionRange = buildSelectionRangeFromValue(editor.children as Value, editorSelection);
     if (!selectionRange) {
       onSelectionChange(null, null);
       return;
@@ -262,6 +312,11 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
           ? "当前有待确认候选，正文暂时锁定，可在右侧切换候选或接受、拒绝。"
       : "可直接编辑正文，选中内容后可发起 AI 改写。";
 
+  const handleDisplayPrefsChange = (next: ChapterEditorDisplayPrefs) => {
+    setDisplayPrefs(next);
+    saveDisplayPrefs(next);
+  };
+
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface || preview) {
@@ -269,24 +324,29 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
     }
     const paragraphNodes = getParagraphElements(surface);
     paragraphNodes.forEach((node) => {
-      node.classList.remove("bg-sky-100/90", "ring-1", "ring-sky-200", "rounded-xl");
+      node.classList.remove(...FOCUS_PARAGRAPH_CLASSES, ...SPEAKING_PARAGRAPH_CLASSES);
     });
-    if (!focusRange) {
-      return;
+
+    if (highlightedParagraphRange) {
+      for (let index = highlightedParagraphRange.startIndex; index <= highlightedParagraphRange.endIndex; index += 1) {
+        paragraphNodes[index]?.classList.add(...FOCUS_PARAGRAPH_CLASSES);
+      }
+      paragraphNodes[highlightedParagraphRange.startIndex]?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
     }
-    const paragraphIndices = getParagraphIndicesForRange(normalizedContent, focusRange);
-    if (!paragraphIndices) {
-      return;
+
+    if (speech.speakingParagraphIndex != null) {
+      const speakingNode = paragraphNodes[speech.speakingParagraphIndex];
+      speakingNode?.classList.remove(...FOCUS_PARAGRAPH_CLASSES);
+      speakingNode?.classList.add(...SPEAKING_PARAGRAPH_CLASSES);
+      speakingNode?.scrollIntoView({
+        block: "center",
+        behavior: "smooth",
+      });
     }
-    for (let index = paragraphIndices.startIndex; index <= paragraphIndices.endIndex; index += 1) {
-      const node = paragraphNodes[index];
-      node?.classList.add("bg-sky-100/90", "ring-1", "ring-sky-200", "rounded-xl");
-    }
-    paragraphNodes[paragraphIndices.startIndex]?.scrollIntoView({
-      block: "center",
-      behavior: "smooth",
-    });
-  }, [highlightedParagraphRange, preview]);
+  }, [highlightedParagraphRange, preview, speech.speakingParagraphIndex]);
 
   const updateParagraphMarkers = useCallback(() => {
     const surface = surfaceRef.current;
@@ -339,6 +399,7 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
   const paragraphMarkers = paragraphMarkerOffsets.length > 0 ? (
     <div className="pointer-events-none absolute inset-y-0 left-0 top-0 z-10 w-12">
       {paragraphMarkerOffsets.map((marker) => {
+        const isSpeaking = speech.speakingParagraphIndex === marker.index;
         const isHighlighted = highlightedParagraphRange
           ? marker.index >= highlightedParagraphRange.startIndex && marker.index <= highlightedParagraphRange.endIndex
           : false;
@@ -346,7 +407,7 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
           <div
             key={`marker:${marker.index}`}
             className={`absolute left-0 flex w-12 justify-end pr-3 text-[11px] font-semibold ${
-              isHighlighted ? "text-sky-700" : "text-muted-foreground"
+              isSpeaking ? "text-amber-700" : isHighlighted ? "text-sky-700" : "text-muted-foreground"
             }`}
             style={{ top: `${marker.top}px`, transform: "translateY(-50%)" }}
           >
@@ -357,19 +418,39 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
     </div>
   ) : null;
 
-  return (
-    <div ref={containerRef} className="relative flex h-full min-h-[540px] flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm xl:min-h-0">
-      <div className="shrink-0 flex items-center justify-between border-b border-border/70 px-4 py-3">
-        <div className="text-sm font-medium text-foreground">正文</div>
-        <div className="text-xs text-muted-foreground">{helperText}</div>
-      </div>
+  const bodyClassName = `${EDITOR_BODY_CLASS_NAME} ${PARAGRAPH_GAP_CLASS_NAME} ${SURFACE_INNER_PADDING_CLASS_NAME} min-h-full rounded-2xl bg-muted/10 p-4`;
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+  const shellClassName = props.embedded
+    ? "relative flex h-full min-h-0 flex-col overflow-hidden"
+    : "relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm";
+
+  return (
+    <div ref={containerRef} className={shellClassName}>
+      <ChapterEditorSurfaceToolbar
+        helperText={helperText}
+        displayPrefs={displayPrefs}
+        onDisplayPrefsChange={handleDisplayPrefsChange}
+        speechSupported={speech.supported}
+        speechStatus={speech.status}
+        speechPrefs={speech.prefs}
+        voiceOptions={speech.voiceOptions}
+        onStartSpeech={() => {
+          if (!speech.start()) {
+            toast.error("没有可朗读的正文。");
+          }
+        }}
+        onStopSpeech={speech.stop}
+        onTogglePauseSpeech={speech.togglePause}
+        onSpeechPrefsChange={speech.updatePrefs}
+      />
+
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
         <div className="relative min-h-full">
           {preview?.mode === "inline" && previewContent ? (
             <div
               ref={surfaceRef}
-              className={`${INLINE_PREVIEW_BODY_CLASS_NAME} ${SURFACE_INNER_PADDING_CLASS_NAME} min-h-full rounded-2xl bg-muted/15 p-4 text-foreground`}
+              className={`${INLINE_PREVIEW_BODY_CLASS_NAME} ${PARAGRAPH_GAP_CLASS_NAME} ${SURFACE_INNER_PADDING_CLASS_NAME} min-h-full rounded-2xl bg-muted/15 p-4 text-foreground`}
+              style={surfaceStyle}
             >
               {previewContent.before}
               {preview.diffChunks.map((chunk) => renderDiffChunk(chunk))}
@@ -383,14 +464,16 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
             <div
               ref={surfaceRef}
               className={`min-h-full rounded-2xl bg-muted/10 p-4 text-foreground ${SURFACE_INNER_PADDING_CLASS_NAME}`}
+              style={surfaceStyle}
             >
-              <TextBlock text={normalizedContent} />
+              <TextBlock text={normalizedContent} style={surfaceStyle} />
             </div>
           ) : editor ? (
             <Plate editor={editor} onSelectionChange={updateSelection} onValueChange={handleValueChange}>
               <div ref={surfaceRef} className="min-h-full">
                 <PlateContent
-                  className={`${EDITOR_BODY_CLASS_NAME} ${SURFACE_INNER_PADDING_CLASS_NAME} min-h-full rounded-2xl bg-muted/10 p-4 outline-none [&_p]:text-foreground`}
+                  className={`${bodyClassName} outline-none [&_.slate-p]:text-foreground [&_p]:text-foreground`}
+                  style={surfaceStyle}
                   onFocus={() => {
                     isUserEditingRef.current = true;
                   }}

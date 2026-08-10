@@ -29,6 +29,10 @@ import { registerShortStoryRoutes } from "../short-story/http/shortStoryRoutes";
 import { registerWritingPlatformRoutes } from "../writing-platform/http/writingPlatformRoutes";
 import {
   aiRevisionPreviewSchema,
+  aiWritingDetectSchema,
+  styleBenchmarkCacheSaveSchema,
+  styleBenchmarkCompareSchema,
+  styleBenchmarkRewriteSchema,
   arcPlanParamsSchema,
   auditIssueParamsSchema,
   beatGenerateSchema,
@@ -113,6 +117,10 @@ export function registerNovelHttpRoutes(router: Router, services: NovelHttpServi
     chapterParamsSchema,
     rewritePreviewSchema,
     aiRevisionPreviewSchema,
+    aiWritingDetectSchema,
+    styleBenchmarkRewriteSchema,
+    styleBenchmarkCompareSchema,
+    styleBenchmarkCacheSaveSchema,
     forwardBusinessError,
   });
 

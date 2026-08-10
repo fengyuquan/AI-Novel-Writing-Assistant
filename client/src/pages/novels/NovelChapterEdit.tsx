@@ -29,10 +29,19 @@ export default function NovelChapterEdit() {
   });
 
   const detail = novelDetailQuery.data?.data;
-  const chapter = useMemo(
-    () => detail?.chapters.find((item) => item.id === chapterId),
-    [chapterId, detail?.chapters],
+  const chapters = useMemo(
+    () => (detail?.chapters ?? []).slice().sort((left, right) => left.order - right.order),
+    [detail?.chapters],
   );
+  const chapterIndex = useMemo(
+    () => chapters.findIndex((item) => item.id === chapterId),
+    [chapterId, chapters],
+  );
+  const chapter = chapterIndex >= 0 ? chapters[chapterIndex] : undefined;
+  const previousChapter = chapterIndex > 0 ? chapters[chapterIndex - 1] : null;
+  const nextChapter = chapterIndex >= 0 && chapterIndex < chapters.length - 1
+    ? chapters[chapterIndex + 1]
+    : null;
 
   if (novelDetailQuery.isLoading && !detail) {
     return (
@@ -59,11 +68,17 @@ export default function NovelChapterEdit() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <ChapterEditorShell
-        key={`${chapter.id}:${chapter.updatedAt}`}
+        key={chapter.id}
         novelId={id}
         chapter={chapter}
+        previousChapter={previousChapter
+          ? { id: previousChapter.id, order: previousChapter.order, title: previousChapter.title }
+          : null}
+        nextChapter={nextChapter
+          ? { id: nextChapter.id, order: nextChapter.order, title: nextChapter.title }
+          : null}
         workspace={chapterEditorWorkspaceQuery.data?.data ?? null}
         workspaceStatus={chapterEditorWorkspaceQuery.isLoading
           ? "loading"
@@ -72,6 +87,7 @@ export default function NovelChapterEdit() {
             : "ready"}
         onBack={() => navigate(`/novels/${id}/edit`)}
         onOpenVersionHistory={() => navigate(`/novels/${id}/edit`)}
+        onGoChapter={(nextChapterId) => navigate(`/novels/${id}/chapters/${nextChapterId}`)}
       />
     </div>
   );

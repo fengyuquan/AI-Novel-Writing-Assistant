@@ -105,6 +105,8 @@ export interface ChapterInput {
   characterScore?: number | null;
   pacingScore?: number | null;
   riskFlags?: string | null;
+  /** Persist-only when false; default true keeps artifact/RAG sync for existing callers. */
+  syncArtifacts?: boolean;
 }
 
 export interface CharacterInput {

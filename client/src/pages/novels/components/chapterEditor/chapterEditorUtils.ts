@@ -191,6 +191,17 @@ export function buildSelectionRangeFromValue(
   };
 }
 
+/** Absolute caret offset in normalized chapter text; works for collapsed selections. */
+export function getCaretOffsetFromValue(
+  value: Value,
+  selection: EditorSelectionLike | null | undefined,
+): number | null {
+  if (!selection) {
+    return null;
+  }
+  return getAbsoluteOffsetFromPoint(value, selection.focus);
+}
+
 export function normalizeValuePayload(payload: unknown): Value {
   if (Array.isArray(payload)) {
     return payload as Value;
@@ -331,15 +342,34 @@ export function buildAiRevisionRequest(input: ChapterEditorRequestBuilderInput) 
   };
 }
 
-export function getSaveStatusLabel(status: "idle" | "saving" | "saved" | "error", isDirty: boolean): string {
+export type ChapterEditorPersistStatus = "idle" | "saving" | "saved" | "error";
+export type ChapterEditorSyncStatus = "idle" | "syncing" | "synced" | "error";
+
+export function getSaveStatusLabel(status: ChapterEditorPersistStatus, isDirty: boolean): string {
   if (status === "saving") {
     return "保存中";
-  }
-  if (status === "saved") {
-    return "已保存";
   }
   if (status === "error") {
     return "保存失败";
   }
-  return isDirty ? "待保存" : "已同步";
+  if (status === "saved" || !isDirty) {
+    return "已保存";
+  }
+  return "待保存";
+}
+
+export function getSyncStatusLabel(
+  status: ChapterEditorSyncStatus,
+  needsSync: boolean,
+): string {
+  if (status === "syncing") {
+    return "同步中";
+  }
+  if (status === "error") {
+    return "同步失败";
+  }
+  if (status === "synced" || !needsSync) {
+    return "已同步";
+  }
+  return "待同步";
 }

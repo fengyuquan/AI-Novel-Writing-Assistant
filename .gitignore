@@ -23,6 +23,12 @@ server/tmp/**/*.sqlite
 server/tmp/**/*.sqlite*
 server/tmp/**/*.sqlite-*
 server/storage/
+server/admin-audit.jsonl
+**/admin-audit.jsonl
+server/backups/
+**/backups/dev-*.db
+**/backups/dev-*.db-wal
+**/backups/dev-*.db-shm
 server/src/prisma/dev.db
 server/src/prisma/dev.db-journal
 .history/
