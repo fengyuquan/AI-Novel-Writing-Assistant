@@ -292,6 +292,22 @@ body {
     overflow-y: auto;
   }
 
+  /* 范本对照学习台：全屏工作台，不受通用 dialog 留白限制。 */
+  [role="dialog"][data-compare-desk="fullscreen"] {
+    inset: 0 !important;
+    left: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    transform: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+  }
+
   /* Bottom/side Sheets manage width themselves; keep component max-height so bodies can scroll. */
   [data-vaul-drawer][role="dialog"] {
     max-width: none;

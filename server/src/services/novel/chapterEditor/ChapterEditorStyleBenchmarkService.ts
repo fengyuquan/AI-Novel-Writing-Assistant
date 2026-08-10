@@ -3,6 +3,7 @@ import type {
   ChapterEditorStyleBenchmarkCacheSession,
   ChapterEditorStyleBenchmarkCompareRequest,
   ChapterEditorStyleBenchmarkCompareResponse,
+  ChapterEditorStyleBenchmarkEssenceCard,
   ChapterEditorStyleBenchmarkLayoutColumns,
   ChapterEditorStyleBenchmarkReference,
   ChapterEditorStyleBenchmarkRewriteRequest,
@@ -18,18 +19,30 @@ import {
   type ChapterEditorStyleBenchmarkComparePromptInput,
   type ChapterEditorStyleBenchmarkRewritePromptInput,
 } from "../../../prompting/prompts/novel/chapterEditor/styleBenchmark.prompts";
+import {
+  chapterEditorStyleBenchmarkEssencePrompt,
+  chapterEditorStyleBenchmarkSegmentRewritePrompt,
+  chapterEditorStyleBenchmarkUnifyPrompt,
+} from "../../../prompting/prompts/novel/chapterEditor/styleBenchmarkEssence.prompts";
 import { KnowledgeService } from "../../knowledge/KnowledgeService";
 import { StyleBindingService } from "../../styleEngine/StyleBindingService";
 import { StyleProfileService } from "../../styleEngine/StyleProfileService";
 import { buildWriterStyleContractText } from "../../styleEngine/styleContractText";
 import { ChapterEditorWorkspaceService } from "./ChapterEditorWorkspaceService";
 import { countEditorWords, normalizeChapterContent } from "./chapterEditorShared";
+import {
+  formatEssenceCardJson,
+  isStyleBenchmarkEssenceCard,
+  normalizeEssenceCompliance,
+  pickStyleBenchmarkChapterSamples,
+  splitStyleBenchmarkRewriteSegments,
+  styleBenchmarkReferenceKey,
+  STYLE_BENCHMARK_SEGMENT_THRESHOLD,
+} from "./styleBenchmarkRewriteSupport";
 
 const FULL_CHAPTER_BENCHMARK_LIMIT = 10000;
-const SAMPLE_EXCERPT_CHARS = 900;
-const MAX_SAMPLE_EXCERPTS = 3;
 const MAX_CACHED_BENCHMARKS = 12;
-const CACHE_SESSION_VERSION = 2;
+const CACHE_SESSION_VERSION = 3;
 
 function normalizeLayoutColumns(value: unknown): ChapterEditorStyleBenchmarkLayoutColumns {
   const numeric = typeof value === "number" ? value : Number(value);
@@ -88,6 +101,16 @@ function parseCacheSession(
       ? parsed.focusedSessionId
       : (activeSessionIds[0] ?? benchmarks[0]?.sessionId ?? null);
 
+    const essenceRaw = parsed.essenceByReferenceKey && typeof parsed.essenceByReferenceKey === "object"
+      ? parsed.essenceByReferenceKey as Record<string, unknown>
+      : {};
+    const essenceByReferenceKey: Record<string, ChapterEditorStyleBenchmarkEssenceCard> = {};
+    for (const [key, value] of Object.entries(essenceRaw)) {
+      if (isStyleBenchmarkEssenceCard(value)) {
+        essenceByReferenceKey[key] = value;
+      }
+    }
+
     return {
       version: CACHE_SESSION_VERSION,
       novelId,
@@ -95,6 +118,7 @@ function parseCacheSession(
       selectedSourceKey: typeof parsed.selectedSourceKey === "string" ? parsed.selectedSourceKey : "",
       benchmarks,
       compareBySessionId,
+      essenceByReferenceKey,
       activeSessionIds: activeSessionIds.length > 0
         ? activeSessionIds
         : benchmarks.slice(0, layoutColumns).map((item) => item.sessionId),
@@ -130,37 +154,9 @@ interface ResolvedReferencePack {
   referenceSamples: string;
 }
 
-function clipSample(text: string, maxChars = SAMPLE_EXCERPT_CHARS): string {
-  const normalized = normalizeChapterContent(text);
-  if (!normalized) {
-    return "";
-  }
-  if (normalized.replace(/\s+/g, "").length <= maxChars) {
-    return normalized;
-  }
-  let count = 0;
-  let end = 0;
-  for (let i = 0; i < normalized.length; i += 1) {
-    if (!/\s/.test(normalized[i]!)) {
-      count += 1;
-    }
-    end = i + 1;
-    if (count >= maxChars) {
-      break;
-    }
-  }
-  return `${normalized.slice(0, end).trim()}…`;
-}
-
-function pickChapterSamples(contents: Array<string | null | undefined>): string {
-  const samples = contents
-    .map((item) => clipSample(item ?? ""))
-    .filter(Boolean)
-    .slice(0, MAX_SAMPLE_EXCERPTS);
-  return samples.map((sample, index) => `【样章 ${index + 1}】\n${sample}`).join("\n\n");
-}
-
 export class ChapterEditorStyleBenchmarkService {
+  private static essenceMemo = new Map<string, ChapterEditorStyleBenchmarkEssenceCard>();
+
   constructor(
     private readonly workspaceService: ChapterEditorWorkspaceService = new ChapterEditorWorkspaceService(),
     private readonly styleProfileService: StyleProfileService = new StyleProfileService(),
@@ -240,28 +236,115 @@ export class ChapterEditorStyleBenchmarkService {
     const referencePack = await this.resolveReference(novelId, input.reference);
     const provider = input.provider ?? "deepseek";
     const model = input.model?.trim() || null;
-    const result = await this.promptRunner({
-      asset: chapterEditorStyleBenchmarkRewritePrompt,
-      promptInput: {
-        novelTitle: context.novel.title?.trim() || "未命名小说",
-        chapterTitle: context.chapter.title?.trim() || `第 ${context.chapter.order} 章`,
+    const focusGaps = (input.focusGaps ?? []).map((item) => item.trim()).filter(Boolean);
+    const novelTitle = context.novel.title?.trim() || "未命名小说";
+    const chapterTitle = context.chapter.title?.trim() || `第 ${context.chapter.order} 章`;
+    const essence = await this.resolveEssenceCard({
+      novelId,
+      chapterId,
+      reference: input.reference,
+      referencePack,
+      provider,
+      model,
+    });
+    const essenceJson = formatEssenceCardJson(essence);
+    const segments = splitStyleBenchmarkRewriteSegments(userContent);
+    const useSegmented = segments.length > 1
+      && countEditorWords(userContent) > STYLE_BENCHMARK_SEGMENT_THRESHOLD;
+
+    if (!useSegmented) {
+      const result = await this.promptRunner({
+        asset: chapterEditorStyleBenchmarkRewritePrompt,
+        promptInput: {
+          novelTitle,
+          chapterTitle,
+          userContent,
+          referenceTitle: referencePack.option.title,
+          styleContractText: referencePack.styleContractText,
+          referenceSamples: referencePack.referenceSamples,
+          essenceJson,
+          focusGaps,
+          goalSummary: context.chapterPlan?.objective?.trim() || context.chapter.expectation?.trim() || null,
+          chapterSummary: context.chapterSummary,
+        } satisfies ChapterEditorStyleBenchmarkRewritePromptInput,
+        options: {
+          provider,
+          model: model ?? undefined,
+          temperature: input.temperature ?? 0.55,
+        },
+      });
+      const benchmarkContent = normalizeChapterContent(result.output.benchmarkContent);
+      if (!benchmarkContent.trim()) {
+        throw new Error("AI 未返回可用的范本对照稿，请重试。");
+      }
+      return {
+        sessionId: randomUUID(),
+        reference: referencePack.option,
         userContent,
+        benchmarkContent,
+        styleNotes: result.output.styleNotes.trim(),
+        plotFidelityNotes: result.output.plotFidelityNotes.trim(),
+        essence,
+        essenceCompliance: normalizeEssenceCompliance(result.output.essenceCompliance, essence.fingerprintLines),
+        rewriteMode: "single",
+        provider,
+        model,
+      };
+    }
+
+    const segmentDrafts: string[] = [];
+    const segmentNotes: string[] = [];
+    for (let index = 0; index < segments.length; index += 1) {
+      const previousTail = segmentDrafts.length > 0
+        ? segmentDrafts[segmentDrafts.length - 1]!.slice(-400)
+        : null;
+      const segmentResult = await this.promptRunner({
+        asset: chapterEditorStyleBenchmarkSegmentRewritePrompt,
+        promptInput: {
+          novelTitle,
+          chapterTitle,
+          referenceTitle: referencePack.option.title,
+          segmentIndex: index,
+          segmentCount: segments.length,
+          segmentText: segments[index]!,
+          previousBenchmarkTail: previousTail,
+          essenceJson,
+          focusGaps,
+        },
+        options: {
+          provider,
+          model: model ?? undefined,
+          temperature: input.temperature ?? 0.55,
+        },
+      });
+      const segmentContent = normalizeChapterContent(segmentResult.output.segmentContent);
+      if (!segmentContent.trim()) {
+        throw new Error(`第 ${index + 1} 段范本仿写为空，请重试。`);
+      }
+      segmentDrafts.push(segmentContent);
+      segmentNotes.push(segmentResult.output.styleNotes.trim());
+    }
+
+    const unifyResult = await this.promptRunner({
+      asset: chapterEditorStyleBenchmarkUnifyPrompt,
+      promptInput: {
+        novelTitle,
+        chapterTitle,
         referenceTitle: referencePack.option.title,
-        styleContractText: referencePack.styleContractText,
-        referenceSamples: referencePack.referenceSamples,
-        goalSummary: context.chapterPlan?.objective?.trim() || context.chapter.expectation?.trim() || null,
-        chapterSummary: context.chapterSummary,
-      } satisfies ChapterEditorStyleBenchmarkRewritePromptInput,
+        userContent,
+        draftBenchmarkContent: segmentDrafts.join("\n\n"),
+        essenceJson,
+        focusGaps,
+      },
       options: {
         provider,
         model: model ?? undefined,
-        temperature: input.temperature ?? 0.55,
+        temperature: input.temperature ?? 0.4,
       },
     });
-
-    const benchmarkContent = normalizeChapterContent(result.output.benchmarkContent);
+    const benchmarkContent = normalizeChapterContent(unifyResult.output.benchmarkContent);
     if (!benchmarkContent.trim()) {
-      throw new Error("AI 未返回可用的范本对照稿，请重试。");
+      throw new Error("分段拼章后的对照稿为空，请重试。");
     }
 
     return {
@@ -269,11 +352,75 @@ export class ChapterEditorStyleBenchmarkService {
       reference: referencePack.option,
       userContent,
       benchmarkContent,
-      styleNotes: result.output.styleNotes.trim(),
-      plotFidelityNotes: result.output.plotFidelityNotes.trim(),
+      styleNotes: [
+        unifyResult.output.styleNotes.trim(),
+        segmentNotes.length > 0 ? `分段笔记：${segmentNotes.join(" / ")}` : "",
+      ].filter(Boolean).join("\n"),
+      plotFidelityNotes: unifyResult.output.plotFidelityNotes.trim(),
+      essence,
+      essenceCompliance: normalizeEssenceCompliance(
+        unifyResult.output.essenceCompliance,
+        essence.fingerprintLines,
+      ),
+      rewriteMode: "segmented",
       provider,
       model,
     };
+  }
+
+  private async resolveEssenceCard(input: {
+    novelId: string;
+    chapterId: string;
+    reference: ChapterEditorStyleBenchmarkReference;
+    referencePack: ResolvedReferencePack;
+    provider: NonNullable<ChapterEditorStyleBenchmarkRewriteRequest["provider"]> | "deepseek";
+    model: string | null;
+  }): Promise<ChapterEditorStyleBenchmarkEssenceCard> {
+    const key = styleBenchmarkReferenceKey(input.reference);
+    const memoized = ChapterEditorStyleBenchmarkService.essenceMemo.get(key);
+    if (memoized) {
+      return memoized;
+    }
+    const cache = await this.getCache(input.novelId, input.chapterId);
+    const cached = cache?.essenceByReferenceKey?.[key];
+    if (cached) {
+      ChapterEditorStyleBenchmarkService.essenceMemo.set(key, cached);
+      return cached;
+    }
+
+    const result = await this.promptRunner({
+      asset: chapterEditorStyleBenchmarkEssencePrompt,
+      promptInput: {
+        referenceTitle: input.referencePack.option.title,
+        styleContractText: input.referencePack.styleContractText,
+        referenceSamples: input.referencePack.referenceSamples,
+      },
+      options: {
+        provider: input.provider,
+        model: input.model ?? undefined,
+        temperature: 0.2,
+      },
+    });
+    const essence = result.output as ChapterEditorStyleBenchmarkEssenceCard;
+    ChapterEditorStyleBenchmarkService.essenceMemo.set(key, essence);
+    const nextSession: ChapterEditorStyleBenchmarkCacheSession = {
+      version: CACHE_SESSION_VERSION,
+      novelId: input.novelId,
+      chapterId: input.chapterId,
+      selectedSourceKey: cache?.selectedSourceKey || key,
+      benchmarks: cache?.benchmarks ?? [],
+      compareBySessionId: cache?.compareBySessionId ?? {},
+      essenceByReferenceKey: {
+        ...(cache?.essenceByReferenceKey ?? {}),
+        [key]: essence,
+      },
+      activeSessionIds: cache?.activeSessionIds ?? [],
+      focusedSessionId: cache?.focusedSessionId ?? null,
+      layoutColumns: cache?.layoutColumns ?? 1,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.saveCache(input.novelId, input.chapterId, nextSession);
+    return essence;
   }
 
   async compareChapter(
@@ -412,7 +559,7 @@ export class ChapterEditorStyleBenchmarkService {
         taskStyleProfileId: profile.id,
       });
       const styleContractText = buildWriterStyleContractText(resolved.compiledBlocks?.contract);
-      const samples = pickChapterSamples([profile.sourceContent, profile.analysisMarkdown]);
+      const samples = pickStyleBenchmarkChapterSamples([profile.sourceContent, profile.analysisMarkdown]);
       if (!styleContractText.trim() && !samples.trim()) {
         throw new Error("该写法档案缺少可模仿的风格信息，请换一份或先完成写法提取。");
       }
@@ -437,7 +584,7 @@ export class ChapterEditorStyleBenchmarkService {
       const activeVersion = document.versions.find((version) => version.isActive)
         ?? document.versions[0]
         ?? null;
-      const samples = pickChapterSamples([activeVersion?.content ?? ""]);
+      const samples = pickStyleBenchmarkChapterSamples([activeVersion?.content ?? ""]);
       if (!samples.trim()) {
         throw new Error("该知识库文档没有可用正文，请先上传内容或换一份范本。");
       }
@@ -496,7 +643,7 @@ export class ChapterEditorStyleBenchmarkService {
         withContent[mid]?.content,
         withContent[withContent.length - 1]?.content,
       ];
-      const samples = pickChapterSamples(sampleChapters);
+      const samples = pickStyleBenchmarkChapterSamples(sampleChapters);
       const resolved = await this.styleBindingService.resolveForGeneration({
         novelId: novel.id,
       });

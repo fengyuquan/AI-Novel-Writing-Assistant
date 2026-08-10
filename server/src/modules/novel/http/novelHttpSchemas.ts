@@ -585,6 +585,7 @@ export const styleBenchmarkReferenceSchema = z.object({
 export const styleBenchmarkRewriteSchema = z.object({
   content: z.string().optional(),
   reference: styleBenchmarkReferenceSchema,
+  focusGaps: z.array(z.string().trim().min(1).max(180)).max(8).optional(),
   provider: llmProviderSchema.optional(),
   model: z.string().trim().max(120).optional(),
   temperature: z.number().min(0).max(2).optional(),
@@ -607,6 +608,7 @@ export const styleBenchmarkCacheSaveSchema = z.object({
     selectedSourceKey: z.string().max(240).default(""),
     benchmarks: z.array(z.unknown()).max(12),
     compareBySessionId: z.record(z.string(), z.unknown()).default({}),
+    essenceByReferenceKey: z.record(z.string(), z.unknown()).optional(),
     activeSessionIds: z.array(z.string().trim().min(1).max(120)).max(4).default([]),
     focusedSessionId: z.string().trim().min(1).max(120).nullable().default(null),
     layoutColumns: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),

@@ -51,4 +51,6 @@ server/prisma-diff-migrations-to-schema.sql
 data/
 
 infra/deploy/cloud.env
+infra/deploy/cloud-update.local.env
+infra/deploy/.cloud-stage/
 

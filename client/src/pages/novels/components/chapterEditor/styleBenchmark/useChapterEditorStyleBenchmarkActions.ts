@@ -49,6 +49,7 @@ function emptyState(layoutColumns: StyleBenchmarkLayoutColumns = 1) {
     selectedSourceKey: "",
     benchmarks: [] as ChapterEditorStyleBenchmarkRewriteResponse[],
     compareBySessionId: {} as Record<string, ChapterEditorStyleBenchmarkCompareResponse>,
+    essenceByReferenceKey: {} as NonNullable<ChapterEditorStyleBenchmarkCacheSession["essenceByReferenceKey"]>,
     activeSessionIds: [] as string[],
     focusedSessionId: null as string | null,
     layoutColumns,
@@ -80,6 +81,7 @@ function applySession(
     setSelectedSourceKey: (value: string) => void;
     setBenchmarks: (value: ChapterEditorStyleBenchmarkRewriteResponse[]) => void;
     setCompareBySessionId: (value: Record<string, ChapterEditorStyleBenchmarkCompareResponse>) => void;
+    setEssenceByReferenceKey: (value: NonNullable<ChapterEditorStyleBenchmarkCacheSession["essenceByReferenceKey"]>) => void;
     setActiveSessionIds: (value: string[]) => void;
     setFocusedSessionId: (value: string | null) => void;
     setLayoutColumnsState: (value: StyleBenchmarkLayoutColumns) => void;
@@ -89,6 +91,7 @@ function applySession(
   setters.setSelectedSourceKey(session.selectedSourceKey);
   setters.setBenchmarks(session.benchmarks);
   setters.setCompareBySessionId(session.compareBySessionId);
+  setters.setEssenceByReferenceKey(session.essenceByReferenceKey ?? {});
   setters.setActiveSessionIds(session.activeSessionIds);
   setters.setFocusedSessionId(session.focusedSessionId);
   setters.setLayoutColumnsState(session.layoutColumns);
@@ -110,6 +113,9 @@ export function useChapterEditorStyleBenchmarkActions(params: {
   const [selectedSourceKey, setSelectedSourceKey] = useState("");
   const [benchmarks, setBenchmarks] = useState<ChapterEditorStyleBenchmarkRewriteResponse[]>([]);
   const [compareBySessionId, setCompareBySessionId] = useState<Record<string, ChapterEditorStyleBenchmarkCompareResponse>>({});
+  const [essenceByReferenceKey, setEssenceByReferenceKey] = useState<
+    NonNullable<ChapterEditorStyleBenchmarkCacheSession["essenceByReferenceKey"]>
+  >({});
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
   const [focusedSessionId, setFocusedSessionId] = useState<string | null>(null);
   const [layoutColumns, setLayoutColumnsState] = useState<StyleBenchmarkLayoutColumns>(initialPrefs.layoutColumns);
@@ -133,6 +139,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
       setSelectedSourceKey(empty.selectedSourceKey);
       setBenchmarks(empty.benchmarks);
       setCompareBySessionId(empty.compareBySessionId);
+      setEssenceByReferenceKey(empty.essenceByReferenceKey);
       setActiveSessionIds(empty.activeSessionIds);
       setFocusedSessionId(empty.focusedSessionId);
       setLayoutColumnsState(empty.layoutColumns);
@@ -155,6 +162,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
             setSelectedSourceKey,
             setBenchmarks,
             setCompareBySessionId,
+            setEssenceByReferenceKey,
             setActiveSessionIds,
             setFocusedSessionId,
             setLayoutColumnsState,
@@ -171,6 +179,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
             setSelectedSourceKey,
             setBenchmarks,
             setCompareBySessionId,
+            setEssenceByReferenceKey,
             setActiveSessionIds,
             setFocusedSessionId,
             setLayoutColumnsState,
@@ -190,6 +199,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
         setSelectedSourceKey(empty.selectedSourceKey);
         setBenchmarks(empty.benchmarks);
         setCompareBySessionId(empty.compareBySessionId);
+        setEssenceByReferenceKey(empty.essenceByReferenceKey);
         setActiveSessionIds(empty.activeSessionIds);
         setFocusedSessionId(empty.focusedSessionId);
         setLayoutColumnsState(empty.layoutColumns);
@@ -205,6 +215,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
             setSelectedSourceKey,
             setBenchmarks,
             setCompareBySessionId,
+            setEssenceByReferenceKey,
             setActiveSessionIds,
             setFocusedSessionId,
             setLayoutColumnsState,
@@ -215,6 +226,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
           setSelectedSourceKey(empty.selectedSourceKey);
           setBenchmarks(empty.benchmarks);
           setCompareBySessionId(empty.compareBySessionId);
+          setEssenceByReferenceKey(empty.essenceByReferenceKey);
           setActiveSessionIds(empty.activeSessionIds);
           setFocusedSessionId(empty.focusedSessionId);
           setLayoutColumnsState(empty.layoutColumns);
@@ -242,12 +254,13 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     }
 
     const session: ChapterEditorStyleBenchmarkCacheSession = {
-      version: 2,
+      version: 3,
       novelId,
       chapterId,
       selectedSourceKey,
       benchmarks,
       compareBySessionId,
+      essenceByReferenceKey,
       activeSessionIds,
       focusedSessionId,
       layoutColumns,
@@ -275,6 +288,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     selectedSourceKey,
     benchmarks,
     compareBySessionId,
+    essenceByReferenceKey,
     activeSessionIds,
     focusedSessionId,
     layoutColumns,
@@ -348,7 +362,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     : null;
 
   const rewriteMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (focusGaps?: string[]) => {
       if (!chapterId) {
         throw new Error("当前未选中章节。");
       }
@@ -361,6 +375,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
       return rewriteChapterStyleBenchmark(novelId, chapterId, {
         content: contentDraft,
         reference: selectedReference,
+        focusGaps: focusGaps?.length ? focusGaps : undefined,
         provider: llm.provider,
         model: llm.model,
         temperature: 0.55,
@@ -381,6 +396,13 @@ export function useChapterEditorStyleBenchmarkActions(params: {
         provider: data.provider ?? llm.provider ?? null,
         model: data.model?.trim() || llm.model?.trim() || null,
       };
+      if (versioned.essence) {
+        const key = sourceKey(versioned.reference);
+        setEssenceByReferenceKey((current) => ({
+          ...current,
+          [key]: versioned.essence!,
+        }));
+      }
       setBenchmarks((current) => {
         const next = upsertBenchmarkList(current, versioned);
         setActiveSessionIds((active) => ensureActiveSessionIds(next, active, layoutColumns, versioned.sessionId));
@@ -390,7 +412,14 @@ export function useChapterEditorStyleBenchmarkActions(params: {
       setLatestGeneratedSessionId(versioned.sessionId);
       setErrorMessage(null);
       setRestoredFromCache(false);
-      toast.success("已按范本手感写好对照稿，并已保存到本章缓存。");
+      const missedCount = versioned.essenceCompliance?.missed?.length ?? 0;
+      toast.success(
+        missedCount > 0
+          ? `对照稿已生成；还有 ${missedCount} 条精髓指纹未覆盖，可按缺口再生成。`
+          : versioned.rewriteMode === "segmented"
+            ? "已分段仿写并统一声口，对照稿已保存到本章缓存。"
+            : "已按范本精髓写好对照稿，并已保存到本章缓存。",
+      );
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "生成范本对照稿失败，请重试。";
@@ -549,6 +578,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     const empty = emptyState(layoutColumns);
     setBenchmarks(empty.benchmarks);
     setCompareBySessionId(empty.compareBySessionId);
+    setEssenceByReferenceKey(empty.essenceByReferenceKey);
     setActiveSessionIds(empty.activeSessionIds);
     setFocusedSessionId(empty.focusedSessionId);
     setRestoredFromCache(false);
@@ -568,6 +598,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     focusedBenchmark,
     focusedCompareResult,
     compareBySessionId,
+    essenceByReferenceKey,
     activeSessionIds,
     focusedSessionId,
     layoutColumns,
@@ -581,7 +612,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     errorMessage,
     isRewriting: rewriteMutation.isPending,
     isComparing: compareMutation.isPending,
-    runRewrite: () => rewriteMutation.mutate(),
+    runRewrite: (focusGaps?: string[]) => rewriteMutation.mutate(focusGaps),
     runCompare: (sessionId?: string) => compareMutation.mutate(sessionId),
     clearCachedResults,
   };

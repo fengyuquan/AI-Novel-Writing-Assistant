@@ -154,6 +154,31 @@ docker stats
 
 ### 更新代码
 
+推荐用增量更新脚本（本机编译 + 只传变更包 + 云端重建容器）：
+
+本机 PowerShell：
+
+```powershell
+# 可选：复制并编辑连接配置
+copy infra\deploy\cloud-update.local.env.example infra\deploy\cloud-update.local.env
+
+# 自动判断变更范围，打包上传并触发云端更新
+.\infra\deploy\cloud-update.local.ps1
+
+# 强制后端 / 全量 / 不使用 Docker 缓存
+.\infra\deploy\cloud-update.local.ps1 -Shared -Server -NoCache
+.\infra\deploy\cloud-update.local.ps1 -All -NoCache
+```
+
+云主机（若本机加了 `-SkipRemote`，再手动执行）：
+
+```bash
+cd /opt/ai-novel
+bash infra/deploy/cloud-update.remote.sh --package data/cloud/incoming/ai-novel-cloud-update-XXXX.tgz --no-cache
+```
+
+也可用旧的 compose 全量方式：
+
 ```bash
 cd /opt/ai-novel
 git pull
@@ -161,10 +186,11 @@ docker compose -f infra/docker-compose.cloud.yml --env-file infra/deploy/cloud.e
 docker compose -f infra/docker-compose.cloud.yml --env-file infra/deploy/cloud.env up -d
 ```
 
-更新前先备份：
+更新前脚本会自动备份：
 
 ```bash
-cp data/cloud/db/dev.db "data/cloud/db/dev.db.bak.$(date +%Y%m%d%H%M%S)"
+# 备份路径示例
+data/cloud/db/backups/dev.db.bak.YYYYMMDDHHMMSS
 ```
 
 ## 单用户访问门禁（推荐公网开启）
@@ -206,3 +232,6 @@ docker run -d \
 | `infra/deploy/api-entrypoint-sqlite.sh` | 启动前 schema 同步 |
 | `infra/nginx/ai-novel-cloud.conf` | `/` 静态 + `/api` 反代 + 访问门禁 |
 | `infra/deploy/create-site-htpasswd.sh` | 生成 `.htpasswd` |
+| `infra/deploy/cloud-update.local.ps1` | 本机增量编译打包上传 |
+| `infra/deploy/cloud-update.remote.sh` | 云端解包重建重启 |
+| `infra/deploy/cloud-update.local.env.example` | 本机云主机连接配置示例 |

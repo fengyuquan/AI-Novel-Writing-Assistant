@@ -7,7 +7,7 @@ import type {
 
 const PREFIX = "chapter-editor-style-benchmark:";
 const PREFS_KEY = `${PREFIX}prefs`;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 export const MAX_CACHED_BENCHMARKS = 12;
 export const MAX_VISIBLE_BENCHMARK_COLUMNS = 4;
 
@@ -138,6 +138,7 @@ function migrateLegacySession(
     selectedSourceKey: typeof parsed.selectedSourceKey === "string" ? parsed.selectedSourceKey : "",
     benchmarks,
     compareBySessionId,
+    essenceByReferenceKey: {},
     activeSessionIds: benchmarks.slice(0, prefs.layoutColumns).map((item) => item.sessionId),
     focusedSessionId: benchmarks[0]?.sessionId ?? null,
     layoutColumns: prefs.layoutColumns,
@@ -162,7 +163,7 @@ export function loadStyleBenchmarkSession(
       return null;
     }
 
-    if (parsed.version !== CACHE_VERSION) {
+    if (typeof parsed.version !== "number" || parsed.version < 2) {
       return migrateLegacySession(parsed, novelId, chapterId);
     }
 
@@ -176,6 +177,15 @@ export function loadStyleBenchmarkSession(
     for (const [sessionId, value] of Object.entries(compareRaw)) {
       if (isCompareResult(value)) {
         compareBySessionId[sessionId] = value;
+      }
+    }
+    const essenceRaw = parsed.essenceByReferenceKey && typeof parsed.essenceByReferenceKey === "object"
+      ? parsed.essenceByReferenceKey as Record<string, unknown>
+      : {};
+    const essenceByReferenceKey: NonNullable<StyleBenchmarkCacheSession["essenceByReferenceKey"]> = {};
+    for (const [key, value] of Object.entries(essenceRaw)) {
+      if (value && typeof value === "object" && Array.isArray((value as { fingerprintLines?: unknown }).fingerprintLines)) {
+        essenceByReferenceKey[key] = value as NonNullable<StyleBenchmarkCacheSession["essenceByReferenceKey"]>[string];
       }
     }
     const layoutColumns = normalizeLayoutColumns(parsed.layoutColumns ?? loadStyleBenchmarkPrefs().layoutColumns);
@@ -194,6 +204,7 @@ export function loadStyleBenchmarkSession(
       selectedSourceKey: typeof parsed.selectedSourceKey === "string" ? parsed.selectedSourceKey : "",
       benchmarks,
       compareBySessionId,
+      essenceByReferenceKey,
       activeSessionIds: activeSessionIds.length > 0
         ? activeSessionIds
         : benchmarks.slice(0, layoutColumns).map((item) => item.sessionId),

@@ -4,6 +4,9 @@ import AiButton from "@/components/common/AiButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import ChapterEditorStyleBenchmarkCompareDialog from "./ChapterEditorStyleBenchmarkCompareDialog";
+import { enterBrowserFullscreen } from "./browserFullscreen";
+import { StyleBenchmarkEssenceSummary } from "./StyleBenchmarkEssenceSummary";
+import { SHORT_LANDSCAPE_MAX_HEIGHT_PX } from "./useStyleBenchmarkCompareDeskMode";
 import { benchmarkVersionKey, formatBenchmarkModelLabel } from "./styleBenchmarkStorage";
 import { useChapterEditorStyleBenchmarkActions } from "./useChapterEditorStyleBenchmarkActions";
 
@@ -90,13 +93,15 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
     currentVersionKey
     && benchmarks.some((item) => benchmarkVersionKey(item) === currentVersionKey),
   );
+  const selectedEssence = focusedBenchmark?.essence ?? null;
+  const selectedCompliance = focusedBenchmark?.essenceCompliance ?? null;
 
   return (
     <div className="space-y-3 rounded-2xl border border-sky-200/80 bg-sky-50/40 p-3">
       <div className="space-y-1">
         <div className="text-sm font-medium text-foreground">范本对照</div>
         <div className="text-xs leading-5 text-muted-foreground">
-          可选多本范本生成对照稿；写好后打开对照窗，支持全屏、段落对齐调整、多标签切换与最多 4 列并排
+          先提炼范文精髓，再按精髓写对照稿；长章会分段仿写后统一声口。写好后打开对照窗做段落学习
           {isDirty ? "（会用当前编辑区正文，含未保存修改）" : ""}
           。范文会保存到本章数据库缓存，下次打开同一章仍在。
         </div>
@@ -137,17 +142,29 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
       <AiButton
         size="sm"
         className="w-full"
-        onClick={runRewrite}
+        onClick={() => runRewrite()}
         disabled={!canRunRewrite}
       >
         {isRewriting
-          ? "正在按范本手感写对照稿..."
+          ? "正在提炼精髓并写对照稿..."
           : existingSameVersion
             ? "重新生成该范文此模型版（覆盖）"
             : benchmarks.length > 0
               ? "再生成一篇范文版本并加入对照"
-              : "按范本手感写一版本章"}
+              : "按范本精髓写一版本章"}
       </AiButton>
+
+      <StyleBenchmarkEssenceSummary
+        essence={selectedEssence}
+        compliance={selectedCompliance}
+        rewriteMode={focusedBenchmark?.rewriteMode}
+        disabled={isRewriting || isComparing}
+        onRetryMissed={
+          selectedCompliance?.missed?.length
+            ? () => runRewrite(selectedCompliance.missed)
+            : undefined
+        }
+      />
 
       {sourcesError ? (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-5 text-destructive">
@@ -183,7 +200,15 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
           <Button
             size="sm"
             className="w-full"
-            onClick={() => setCompareOpen(true)}
+            onClick={() => {
+              const isShortLandscape = typeof window !== "undefined"
+                && window.innerWidth > window.innerHeight
+                && window.innerHeight <= SHORT_LANDSCAPE_MAX_HEIGHT_PX;
+              if (isShortLandscape) {
+                void enterBrowserFullscreen(document.documentElement);
+              }
+              setCompareOpen(true);
+            }}
           >
             打开左右对照窗
           </Button>

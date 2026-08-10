@@ -504,9 +504,34 @@ export interface ChapterEditorStyleBenchmarkReference {
 export interface ChapterEditorStyleBenchmarkRewriteRequest {
   content?: string;
   reference: ChapterEditorStyleBenchmarkReference;
+  /** 重试时重点补齐的精髓指纹（通常来自上次 missed）。 */
+  focusGaps?: string[];
   provider?: import("./llm").LLMProvider;
   model?: string;
   temperature?: number;
+}
+
+export interface ChapterEditorStyleBenchmarkEssenceAnchor {
+  quote: string;
+  why: string;
+}
+
+export interface ChapterEditorStyleBenchmarkEssenceCard {
+  voiceRules: string[];
+  dialogueRules: string[];
+  pacingRules: string[];
+  sensoryRules: string[];
+  forbidPatterns: string[];
+  fingerprintLines: string[];
+  sampleAnchors: ChapterEditorStyleBenchmarkEssenceAnchor[];
+  confidence: "high" | "medium" | "low";
+  gaps: string[];
+}
+
+export interface ChapterEditorStyleBenchmarkEssenceCompliance {
+  covered: string[];
+  missed: string[];
+  notes: string;
 }
 
 export interface ChapterEditorStyleBenchmarkRewriteResponse {
@@ -516,6 +541,10 @@ export interface ChapterEditorStyleBenchmarkRewriteResponse {
   benchmarkContent: string;
   styleNotes: string;
   plotFidelityNotes: string;
+  essence?: ChapterEditorStyleBenchmarkEssenceCard | null;
+  essenceCompliance?: ChapterEditorStyleBenchmarkEssenceCompliance | null;
+  /** single=整章一次仿写；segmented=分段仿写后再统一声口。 */
+  rewriteMode?: "single" | "segmented";
   /** 生成时使用的模型厂商；同一范文不同模型视为不同版本。 */
   provider?: import("./llm").LLMProvider | null;
   /** 生成时使用的模型名；同一范文不同模型视为不同版本。 */
@@ -558,6 +587,8 @@ export interface ChapterEditorStyleBenchmarkCacheSession {
   selectedSourceKey: string;
   benchmarks: ChapterEditorStyleBenchmarkRewriteResponse[];
   compareBySessionId: Record<string, ChapterEditorStyleBenchmarkCompareResponse>;
+  /** 按范文来源缓存的精髓卡，换章可复用。 */
+  essenceByReferenceKey?: Record<string, ChapterEditorStyleBenchmarkEssenceCard>;
   activeSessionIds: string[];
   focusedSessionId: string | null;
   layoutColumns: ChapterEditorStyleBenchmarkLayoutColumns;
