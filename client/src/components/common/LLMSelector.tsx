@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, RefreshCw } from "lucide-react";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import {
   type APIKeyStatus,
@@ -10,6 +11,7 @@ import {
 } from "@/api/settings";
 import { queryKeys } from "@/api/queryKeys";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -18,6 +20,7 @@ import {
   isRunnableProviderConfig,
   resolveModel,
 } from "@/lib/llmSelection";
+import { writeProviderModelsCache } from "@/lib/providerModelsCache";
 import { useLLMStore } from "@/store/llmStore";
 import SearchableSelect from "./SearchableSelect";
 
@@ -37,8 +40,12 @@ interface LLMSelectorProps {
   showParameters?: boolean;
   showCompactTemperature?: boolean;
   compact?: boolean;
+  /** Full-width provider/model controls for mobile top bars. */
+  mobile?: boolean;
   showBadge?: boolean;
   showHelperText?: boolean;
+  /** Show refresh control; uses cached models until clicked. Default true. */
+  showRefreshModels?: boolean;
   className?: string;
 }
 
@@ -57,13 +64,16 @@ export default function LLMSelector({
   showParameters = false,
   showCompactTemperature = false,
   compact = false,
+  mobile = false,
   showBadge = true,
   showHelperText = true,
+  showRefreshModels = true,
   className,
 }: LLMSelectorProps) {
   const store = useLLMStore();
   const queryClient = useQueryClient();
-  const latestProviderRefreshRef = useRef<LLMProvider | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [modelsCacheEpoch, setModelsCacheEpoch] = useState(0);
   const currentValue = value ?? {
     provider: store.provider,
     model: store.model,
@@ -87,6 +97,40 @@ export default function LLMSelector({
     },
   });
 
+  const patchProviderModels = useCallback((
+    provider: LLMProvider,
+    models: string[],
+    currentModel: string,
+    baseURL?: string,
+  ) => {
+    writeProviderModelsCache(provider, models, baseURL);
+    setModelsCacheEpoch((current) => current + 1);
+    queryClient.setQueryData<ApiResponse<APIKeyStatus[]>>(
+      queryKeys.settings.apiKeys,
+      (previous) => {
+        if (!previous?.data) {
+          return previous;
+        }
+        return {
+          ...previous,
+          data: previous.data.map((item) => {
+            if (item.provider !== provider) {
+              return item;
+            }
+            return {
+              ...item,
+              currentModel: currentModel || item.currentModel,
+              models: Array.from(new Set([
+                currentModel,
+                ...models,
+              ].filter(Boolean))),
+            };
+          }),
+        };
+      },
+    );
+  }, [queryClient]);
+
   const refreshProviderModelsMutation = useMutation({
     mutationFn: refreshProviderModelList,
     onSuccess: (response) => {
@@ -94,30 +138,19 @@ export default function LLMSelector({
       if (!refreshed) {
         return;
       }
-      queryClient.setQueryData<ApiResponse<APIKeyStatus[]>>(
-        queryKeys.settings.apiKeys,
-        (previous) => {
-          if (!previous?.data) {
-            return previous;
-          }
-          return {
-            ...previous,
-            data: previous.data.map((item) => {
-              if (item.provider !== refreshed.provider) {
-                return item;
-              }
-              return {
-                ...item,
-                currentModel: refreshed.currentModel,
-                models: Array.from(new Set([
-                  refreshed.currentModel,
-                  ...refreshed.models,
-                ].filter(Boolean))),
-              };
-            }),
-          };
-        },
+      setRefreshError(null);
+      const matched = (apiKeySettingsQuery.data?.data ?? []).find(
+        (item) => item.provider === refreshed.provider,
       );
+      patchProviderModels(
+        refreshed.provider,
+        refreshed.models,
+        refreshed.currentModel,
+        matched?.currentBaseURL,
+      );
+    },
+    onError: (error) => {
+      setRefreshError(error instanceof Error ? error.message : "刷新模型列表失败");
     },
   });
 
@@ -125,6 +158,15 @@ export default function LLMSelector({
     () => (apiKeySettingsQuery.data?.data ?? []).filter(isRunnableProviderConfig),
     [apiKeySettingsQuery.data?.data],
   );
+
+  // modelsCacheEpoch forces re-read of localStorage after explicit refresh.
+  const providerModelsMap = useMemo(() => {
+    void modelsCacheEpoch;
+    const entries = providerConfigs.map((config) => (
+      [config.provider, getProviderSelectionModels(config)] as const
+    ));
+    return Object.fromEntries(entries) as Record<string, string[]>;
+  }, [modelsCacheEpoch, providerConfigs]);
 
   const providerOptions = useMemo(
     () => providerConfigs.map((item) => item.provider),
@@ -135,13 +177,6 @@ export default function LLMSelector({
     () => new Map(providerConfigs.map((item) => [item.provider, item.displayName ?? item.name])),
     [providerConfigs],
   );
-
-  const providerModelsMap = useMemo(() => {
-    const entries = providerConfigs.map((config) => (
-      [config.provider, getProviderSelectionModels(config)] as const
-    ));
-    return Object.fromEntries(entries) as Record<string, string[]>;
-  }, [providerConfigs]);
 
   const hasRunnableProviders = providerOptions.length > 0;
 
@@ -167,6 +202,7 @@ export default function LLMSelector({
   );
   const providerSelectValue = hasRunnableProviders ? effectiveProvider : NO_PROVIDER_VALUE;
   const shouldWaitForGlobalHydration = !value && !onChange && !store.hasHydratedSelection;
+  const isRefreshingModels = refreshProviderModelsMutation.isPending;
 
   const updateValue = useCallback((next: LLMSelectorValue) => {
     const normalizedModel = resolveModel(next.model, providerModelsMap[next.provider] ?? []);
@@ -234,28 +270,13 @@ export default function LLMSelector({
     }
     const typedProvider = provider as LLMProvider;
     const nextModel = resolveModel("", providerModelsMap[typedProvider] ?? []);
+    setRefreshError(null);
     updateValue({
       provider: typedProvider,
       model: nextModel,
       temperature: resolvedTemperature,
       maxTokens: resolvedMaxTokens,
     });
-    latestProviderRefreshRef.current = typedProvider;
-    void refreshProviderModelsMutation.mutateAsync(typedProvider).then((response) => {
-      if (latestProviderRefreshRef.current !== typedProvider) {
-        return;
-      }
-      const refreshed = response.data;
-      if (!refreshed?.models.length && !refreshed?.currentModel) {
-        return;
-      }
-      updateValue({
-        provider: typedProvider,
-        model: resolveModel(refreshed.currentModel, refreshed.models),
-        temperature: resolvedTemperature,
-        maxTokens: resolvedMaxTokens,
-      });
-    }).catch(() => undefined);
   };
 
   const onModelChange = (model: string) => {
@@ -267,16 +288,56 @@ export default function LLMSelector({
     });
   };
 
+  const onRefreshModels = () => {
+    if (!hasRunnableProviders) {
+      return;
+    }
+    setRefreshError(null);
+    refreshProviderModelsMutation.mutate(effectiveProvider, {
+      onSuccess: (response) => {
+        const refreshed = response.data;
+        if (!refreshed || currentValue.provider !== refreshed.provider) {
+          return;
+        }
+        if (refreshed.models.includes(currentValue.model)) {
+          return;
+        }
+        updateValue({
+          provider: refreshed.provider,
+          model: resolveModel(refreshed.currentModel, refreshed.models),
+          temperature: resolvedTemperature,
+          maxTokens: resolvedMaxTokens,
+        });
+      },
+    });
+  };
+
+  const providerTriggerClass = mobile
+    ? "h-9 w-full min-w-0"
+    : compact
+      ? "h-9 w-[148px] lg:w-[164px]"
+      : "w-full sm:w-[180px]";
+  const modelClass = mobile
+    ? "min-w-0 flex-1"
+    : compact
+      ? "w-[184px] lg:w-[220px]"
+      : "w-full sm:w-[240px]";
+
   return (
     <div className={cn("space-y-2", compact && "space-y-1", className)}>
-      <div className={cn("flex min-w-0 items-center gap-2", compact ? "flex-nowrap gap-1.5" : "flex-wrap")}>
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-2",
+          mobile ? "flex-nowrap gap-1.5" : compact ? "flex-nowrap gap-1.5" : "flex-wrap",
+        )}
+      >
         {showBadge ? <Badge variant="secondary">模型</Badge> : null}
         <Select
           value={providerSelectValue}
           onValueChange={onProviderChange}
           disabled={!hasRunnableProviders}
         >
-          <SelectTrigger className={cn(compact ? "h-9 w-[148px] lg:w-[164px]" : "w-full sm:w-[180px]")}>
+          <SelectTrigger className={cn(providerTriggerClass, mobile && "max-w-[38%]")}>
             <SelectValue placeholder={hasRunnableProviders ? "选择厂商" : "请先配置可用厂商"} />
           </SelectTrigger>
           <SelectContent>
@@ -301,10 +362,29 @@ export default function LLMSelector({
             placeholder={hasRunnableProviders ? "选择模型" : "暂无可用模型"}
             searchPlaceholder="搜索模型"
             emptyText="没有可用模型"
-            className={cn(compact ? "w-[184px] lg:w-[220px]" : "w-full sm:w-[240px]")}
-            triggerClassName={compact ? "h-9 px-2.5" : undefined}
+            className={modelClass}
+            triggerClassName={compact || mobile ? "h-9 px-2.5" : undefined}
             disabled={!hasRunnableProviders}
           />
+        ) : null}
+
+        {showRefreshModels ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className={cn("shrink-0", compact || mobile ? "h-9 w-9" : "h-10 w-10")}
+            onClick={onRefreshModels}
+            disabled={!hasRunnableProviders || isRefreshingModels}
+            title="刷新当前厂商可用模型"
+            aria-label="刷新当前厂商可用模型"
+          >
+            {isRefreshingModels ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
         ) : null}
 
         {showCompactTemperature ? (
@@ -346,6 +426,10 @@ export default function LLMSelector({
           </label>
         ) : null}
       </div>
+
+      {refreshError ? (
+        <div className="text-xs text-destructive">{refreshError}</div>
+      ) : null}
 
       {showHelperText && !hasRunnableProviders && !apiKeySettingsQuery.isLoading ? (
         <div className="text-xs text-muted-foreground">

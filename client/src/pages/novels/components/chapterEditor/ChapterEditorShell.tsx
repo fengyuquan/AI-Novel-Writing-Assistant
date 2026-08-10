@@ -15,6 +15,7 @@ import {
 import { queryKeys } from "@/api/queryKeys";
 import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
 import MobileScrollEdgeButtons from "@/components/layout/mobile/MobileScrollEdgeButtons";
+import MobileLLMHeaderBar from "@/components/layout/mobile/MobileLLMHeaderBar";
 import MobileNovelWorkspaceNavMenu from "@/pages/novels/mobile/MobileNovelWorkspaceNavMenu";
 import { Button } from "@/components/ui/button";
 import {
@@ -733,6 +734,8 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
               </Button>
             ) : null}
           </div>
+
+          <MobileLLMHeaderBar />
 
           <div className="grid grid-cols-2 gap-2">
             <Button

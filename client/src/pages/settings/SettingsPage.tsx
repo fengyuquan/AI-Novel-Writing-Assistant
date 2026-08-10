@@ -32,6 +32,7 @@ import SettingsSectionGroup from "./components/SettingsSectionGroup";
 import StyleEngineRuntimeSettingsCard from "./components/StyleEngineRuntimeSettingsCard";
 import SettingsActionResult from "./SettingsActionResult";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
+import { writeProviderModelsCache } from "@/lib/providerModelsCache";
 
 function formatConnectionTestResult(response: Awaited<ReturnType<typeof testLLMConnection>>): string {
   const latency = response.data?.latency ?? 0;
@@ -163,6 +164,8 @@ export default function SettingsPage() {
   };
 
   const updateProviderModelsInCache = (provider: string, models: string[], currentModel: string) => {
+    const matched = providerConfigs.find((item) => item.provider === provider);
+    writeProviderModelsCache(provider, models, matched?.currentBaseURL);
     queryClient.setQueryData<ApiResponse<APIKeyStatus[]>>(queryKeys.settings.apiKeys, (previous) => {
       if (!previous?.data) {
         return previous;
@@ -211,6 +214,13 @@ export default function SettingsPage() {
         requestIntervalMs: payload.requestIntervalMs,
       }),
     onSuccess: async (response) => {
+      if (response.data?.provider && response.data.models?.length) {
+        writeProviderModelsCache(
+          response.data.provider,
+          response.data.models,
+          response.data.baseURL ?? undefined,
+        );
+      }
       resetDialogState();
       setActionResult(response.message ?? "保存成功。");
       await invalidateProviderQueries();
@@ -231,6 +241,13 @@ export default function SettingsPage() {
       requestIntervalMs?: number;
     }) => createCustomProvider(payload),
     onSuccess: async (response) => {
+      if (response.data?.provider && response.data.models?.length) {
+        writeProviderModelsCache(
+          response.data.provider,
+          response.data.models,
+          response.data.baseURL ?? undefined,
+        );
+      }
       resetDialogState();
       setActionResult(response.message ?? "自定义厂商创建成功。");
       await invalidateProviderQueries();

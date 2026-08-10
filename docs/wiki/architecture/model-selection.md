@@ -20,6 +20,9 @@
 - 前端 `useLLMStore` 保存的是运行时投影；页面启动后由设置接口和当前选择接口共同水合。
 - `LLMSelector` 只展示已配置、启用、且存在可用模型的厂商。
 - 用户在顶部切换厂商或模型后，前端应同步保存到服务端当前选择。
+- 手机端站点壳、小说工作区、章节编辑页顶部也提供同一套模型切换（`MobileLLMHeaderBar`），与桌面 Navbar 共用当前选择事实源。
+- 每个厂商的可用模型列表优先读取浏览器本地缓存（`ai-novel.provider-models-cache.v1`，按 `provider::baseURL` 分键）。未缓存时才回退到 `/settings/api-keys` 返回的模型列表。
+- 切换厂商时不自动向远端拉取模型目录；只有用户点击刷新按钮（顶部选择器或设置页厂商卡片）时才调用 `POST /settings/api-keys/:provider/refresh-models`，并写回本地缓存。
 - 没有保存模型的内置厂商不应因为 `PROVIDERS.*.defaultModel` 存在就被视为可运行；需要保存模型、环境模型或可拉取的模型目录。
 - 模型路由、结构化兜底和各任务的显式模型覆盖仍属于独立配置；它们不等同于顶部当前模型。
 
@@ -52,6 +55,8 @@
 - `client/src/components/layout/LLMSelectionBootstrap.tsx`
 - `client/src/components/common/LLMSelector.tsx`
 - `client/src/store/llmStore.ts`
+- `client/src/lib/providerModelsCache.ts`
+- `client/src/components/layout/mobile/MobileLLMHeaderBar.tsx`
 
 ## 来源文档
 

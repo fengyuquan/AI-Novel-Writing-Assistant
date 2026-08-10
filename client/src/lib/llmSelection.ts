@@ -1,5 +1,6 @@
 import type { APIKeyStatus, LLMSelectionSettings } from "@/api/settings";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
+import { resolveProviderModelsFromCache } from "@/lib/providerModelsCache";
 
 export interface LLMSelectionValue {
   provider: LLMProvider;
@@ -30,7 +31,7 @@ export function resolveModel(currentModel: string, models: string[]): string {
 }
 
 export function getProviderSelectionModels(config: APIKeyStatus): string[] {
-  return sanitizeModelList([config.currentModel, ...(config.models ?? [])]);
+  return resolveProviderModelsFromCache(config);
 }
 
 export function isRunnableProviderConfig(config: APIKeyStatus): boolean {

@@ -31,6 +31,7 @@ import MobileFloatingSaveButton from "./MobileFloatingSaveButton";
 import MobileNovelStepNav from "./MobileNovelStepNav";
 import MobileNovelWorkspaceNavMenu from "./MobileNovelWorkspaceNavMenu";
 import MobileScrollEdgeButtons from "@/components/layout/mobile/MobileScrollEdgeButtons";
+import MobileLLMHeaderBar from "@/components/layout/mobile/MobileLLMHeaderBar";
 import {
   getMobileNovelSaveState,
   getMobileNovelWorkspaceStatusText,
@@ -232,6 +233,7 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
             </Dialog>
           </div>
         </div>
+        <MobileLLMHeaderBar className="mt-2" />
 
         <div className="mt-3">
           <MobileNovelStepNav

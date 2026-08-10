@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { VisualAssetLibraryDialog } from "@/components/visualAssets";
 import { cn } from "@/lib/utils";
 import MobileScrollEdgeButtons from "./MobileScrollEdgeButtons";
+import MobileLLMHeaderBar from "./MobileLLMHeaderBar";
 import {
   getMobileMoreNavGroups,
   getMobileNavGroupForPath,
@@ -109,6 +110,7 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
             </Button>
           </div>
         </div>
+        <MobileLLMHeaderBar className="mt-2" />
       </header>
 
       <main className={cn("mobile-site-main mobile-safe-bottom", getMobileRouteClassName(location.pathname))}>
@@ -119,7 +121,7 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
       <MobileScrollEdgeButtons />
 
       {moreOpen ? (
-        <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] top-14 z-50 bg-black/20 px-3 pb-3 backdrop-blur-sm">
+        <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] top-[7rem] z-50 bg-black/20 px-3 pb-3 backdrop-blur-sm">
           <div className="max-h-full overflow-y-auto rounded-3xl border bg-background p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
