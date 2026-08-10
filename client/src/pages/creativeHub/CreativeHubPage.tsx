@@ -4,7 +4,7 @@ import type { ApiResponse } from "@ai-novel/shared/types/api";
 import type { CreativeHubResourceBinding, CreativeHubThread } from "@ai-novel/shared/types/creativeHub";
 import type { LangChainMessage } from "@assistant-ui/react-langgraph";
 import { useSearchParams } from "react-router-dom";
-import { MessagesSquare, RefreshCw } from "lucide-react";
+import { BookOpenText, ListTree, MessagesSquare, RefreshCw } from "lucide-react";
 import {
   createCreativeHubThread,
   deleteCreativeHubThread,
@@ -16,12 +16,21 @@ import {
 } from "@/api/creativeHub";
 import { getNovelList } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
+import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
 import {
   WorkspaceHeader,
   WorkspaceNextAction,
   WorkspaceStateNotice,
 } from "@/components/workspace";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { toast } from "@/components/ui/toast";
 import { useLLMStore } from "@/store/llmStore";
 import { hasCreativeHubBindings } from "@/lib/creativeHubLinks";
@@ -45,7 +54,9 @@ const pendingAutoCreateThreadKeys = new Set<string>();
 export default function CreativeHubPage() {
   const llm = useLLMStore();
   const queryClient = useQueryClient();
+  const isMobileViewport = useIsMobileViewport();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [mobileAssistSheet, setMobileAssistSheet] = useState<"context" | "threads" | null>(null);
   const requestedThreadId = searchParams.get("threadId")?.trim() ?? "";
   const activeThreadId = requestedThreadId;
   const activeThreadIdRef = useRef(activeThreadId);
@@ -508,6 +519,10 @@ export default function CreativeHubPage() {
       return;
     }
     if (recommendation.action === "select_novel" || recommendation.action === "open_production") {
+      if (isMobileViewport) {
+        setMobileAssistSheet("context");
+        return;
+      }
       focusWorkspaceArea("creative-hub-context");
       return;
     }
@@ -547,7 +562,7 @@ export default function CreativeHubPage() {
   }, [activeThreadId, productionStatus?.worldId, queryClient, rawThreadBindings]);
 
   return (
-    <div className="space-y-4">
+    <div className="mobile-page-creative-hub space-y-4 overflow-x-hidden">
       <WorkspaceHeader
         icon={MessagesSquare}
         context="当前小说与创作线程"
@@ -568,6 +583,7 @@ export default function CreativeHubPage() {
           <Button
             type="button"
             variant="outline"
+            className={isMobileViewport ? "h-11 w-full sm:w-auto" : undefined}
             disabled={threadNavigationDisabled}
             onClick={() => void requestThreadCreation({ title: DEFAULT_THREAD_TITLE, resourceBindings: {} })}
           >
@@ -594,6 +610,7 @@ export default function CreativeHubPage() {
             <Button
               type="button"
               size="sm"
+              className={isMobileViewport ? "h-11 min-h-11 w-full sm:w-auto" : undefined}
               onClick={handleWorkspaceRecommendation}
               disabled={recommendationPending || (
                 workspaceActionDisabled && workspacePresentation.recommendation.action === "send_prompt"
@@ -608,84 +625,218 @@ export default function CreativeHubPage() {
         />
       )}
 
-      <div className="grid min-h-[72vh] gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:h-[calc(100vh-13rem)] xl:grid-cols-[240px_minmax(0,1fr)_320px]">
-        <div id="creative-hub-activity" className="min-h-0 scroll-mt-4 lg:col-start-1 lg:row-start-1 xl:col-start-2">
-          <CreativeHubConversation
-            runtime={runtimeState.runtime}
-            onQuickAction={(prompt) => void handleQuickAction(prompt)}
-            interrupt={runtimeState.interrupt}
-            approvalNote={approvalNote}
-            onApprovalNoteChange={setApprovalNote}
-            onResolveInterrupt={(action) => void handleResolveInterrupt(action)}
-            approvalPending={approvalPending}
-            diagnostics={stateQuery.data?.data?.diagnostics}
-            loading={runtimeState.isThreadLoading}
-            errorMessage={runtimeState.threadLoadError ?? ""}
-            onRetry={runtimeState.retryThreadLoad}
-            actionDisabled={workspaceActionDisabled}
-          />
-        </div>
+      {isMobileViewport ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-11"
+              onClick={() => setMobileAssistSheet("context")}
+            >
+              <BookOpenText className="h-4 w-4" />
+              小说与生产
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-11"
+              onClick={() => setMobileAssistSheet("threads")}
+            >
+              <ListTree className="h-4 w-4" />
+              创作现场
+            </Button>
+          </div>
 
-        <div id="creative-hub-context" className="min-h-0 scroll-mt-4 lg:col-start-2 lg:row-start-1 xl:col-start-3">
-          <CreativeHubSidebar
-            thread={currentThread}
-            bindings={currentBindings}
-            novels={novels}
-            interrupt={runtimeState.interrupt}
-            diagnostics={stateQuery.data?.data?.diagnostics}
-            productionStatus={productionStatus}
-            novelSetup={novelSetup}
-            latestTurnSummary={latestTurnSummary}
-            currentCheckpointId={currentCheckpointId}
-            modelSummary={{
-              provider: llm.provider,
-              model: llm.model,
-              temperature: llm.temperature,
-              maxTokens: llm.maxTokens,
-            }}
-            defaultRuntimeDetailsCollapsed={defaultRuntimeDetailsCollapsed}
-            actionDisabled={workspaceActionDisabled}
-            novelsLoading={novelsQuery.isLoading}
-            novelsErrorMessage={novelsQuery.error instanceof Error ? novelsQuery.error.message : novelsQuery.error ? "小说列表加载失败。" : ""}
-            novelsRetrying={novelsQuery.isFetching}
-            onToggleRuntimeDetailsDefault={() => {
-              setDefaultRuntimeDetailsCollapsed((value) => !value);
-            }}
-            onRetryNovels={() => void novelsQuery.refetch()}
-            onNovelChange={(novelId) => handleBindingsChange({ novelId: novelId || null })}
-            onQuickAction={(prompt) => void handleQuickAction(prompt)}
-            onCreateNovel={handleCreateNovelQuickAction}
-            onStartProduction={handleQuickAction}
-          />
-        </div>
+          <div id="creative-hub-activity" className="min-h-[60vh] scroll-mt-4">
+            <CreativeHubConversation
+              runtime={runtimeState.runtime}
+              onQuickAction={(prompt) => void handleQuickAction(prompt)}
+              interrupt={runtimeState.interrupt}
+              approvalNote={approvalNote}
+              onApprovalNoteChange={setApprovalNote}
+              onResolveInterrupt={(action) => void handleResolveInterrupt(action)}
+              approvalPending={approvalPending}
+              diagnostics={stateQuery.data?.data?.diagnostics}
+              loading={runtimeState.isThreadLoading}
+              errorMessage={runtimeState.threadLoadError ?? ""}
+              onRetry={runtimeState.retryThreadLoad}
+              actionDisabled={workspaceActionDisabled}
+            />
+          </div>
 
-        <div className="min-h-0 lg:col-span-2 lg:row-start-2 xl:col-span-1 xl:col-start-1 xl:row-start-1">
-          <CreativeHubThreadList
-            threads={threads}
-            activeThreadId={activeThreadId}
-            loading={threadsQuery.isLoading}
-            errorMessage={threadsQuery.error instanceof Error ? threadsQuery.error.message : threadsQuery.error ? "创作线程加载失败。" : ""}
-            retryPending={threadsQuery.isFetching}
-            actionPending={createThreadMutation.isPending}
-            actionDisabled={threadNavigationDisabled}
-            pendingThreadId={threadActionPendingId}
-            onRetry={() => void threadsQuery.refetch()}
-            onSelect={(threadId) => {
-              const selectedThread = threads.find((thread) => thread.id === threadId);
-              setSearchParams((prev) => {
-                const next = selectedThread
-                  ? applyCreativeHubBindingsToSearch(prev, selectedThread.resourceBindings)
-                  : new URLSearchParams(prev);
-                next.set("threadId", threadId);
-                return next;
-              }, { replace: true });
-            }}
-            onCreate={() => void requestThreadCreation({ title: DEFAULT_THREAD_TITLE, resourceBindings: {} })}
-            onArchive={(threadId, archived) => void archiveThread(threadId, archived)}
-            onDelete={(threadId) => void removeThread(threadId)}
-          />
+          <Sheet
+            open={mobileAssistSheet === "context"}
+            onOpenChange={(open) => !open && setMobileAssistSheet(null)}
+          >
+            <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+              <SheetHeader>
+                <SheetTitle>小说与生产</SheetTitle>
+                <SheetDescription>
+                  选择当前小说、查看开书准备，并把重生产交给自动导演。
+                </SheetDescription>
+              </SheetHeader>
+              <SheetBody className="px-3 pb-4">
+                <div id="creative-hub-context">
+                  <CreativeHubSidebar
+                    thread={currentThread}
+                    bindings={currentBindings}
+                    novels={novels}
+                    interrupt={runtimeState.interrupt}
+                    diagnostics={stateQuery.data?.data?.diagnostics}
+                    productionStatus={productionStatus}
+                    novelSetup={novelSetup}
+                    latestTurnSummary={latestTurnSummary}
+                    currentCheckpointId={currentCheckpointId}
+                    modelSummary={{
+                      provider: llm.provider,
+                      model: llm.model,
+                      temperature: llm.temperature,
+                      maxTokens: llm.maxTokens,
+                    }}
+                    defaultRuntimeDetailsCollapsed={defaultRuntimeDetailsCollapsed}
+                    actionDisabled={workspaceActionDisabled}
+                    novelsLoading={novelsQuery.isLoading}
+                    novelsErrorMessage={novelsQuery.error instanceof Error ? novelsQuery.error.message : novelsQuery.error ? "小说列表加载失败。" : ""}
+                    novelsRetrying={novelsQuery.isFetching}
+                    onToggleRuntimeDetailsDefault={() => {
+                      setDefaultRuntimeDetailsCollapsed((value) => !value);
+                    }}
+                    onRetryNovels={() => void novelsQuery.refetch()}
+                    onNovelChange={(novelId) => handleBindingsChange({ novelId: novelId || null })}
+                    onQuickAction={(prompt) => void handleQuickAction(prompt)}
+                    onCreateNovel={handleCreateNovelQuickAction}
+                    onStartProduction={handleQuickAction}
+                  />
+                </div>
+              </SheetBody>
+            </SheetContent>
+          </Sheet>
+
+          <Sheet
+            open={mobileAssistSheet === "threads"}
+            onOpenChange={(open) => !open && setMobileAssistSheet(null)}
+          >
+            <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+              <SheetHeader>
+                <SheetTitle>创作现场</SheetTitle>
+                <SheetDescription>
+                  切换或新建创作线程。主任务仍在对话区完成。
+                </SheetDescription>
+              </SheetHeader>
+              <SheetBody className="px-3 pb-4">
+                <CreativeHubThreadList
+                  threads={threads}
+                  activeThreadId={activeThreadId}
+                  loading={threadsQuery.isLoading}
+                  errorMessage={threadsQuery.error instanceof Error ? threadsQuery.error.message : threadsQuery.error ? "创作线程加载失败。" : ""}
+                  retryPending={threadsQuery.isFetching}
+                  actionPending={createThreadMutation.isPending}
+                  actionDisabled={threadNavigationDisabled}
+                  pendingThreadId={threadActionPendingId}
+                  onRetry={() => void threadsQuery.refetch()}
+                  onSelect={(threadId) => {
+                    const selectedThread = threads.find((thread) => thread.id === threadId);
+                    setSearchParams((prev) => {
+                      const next = selectedThread
+                        ? applyCreativeHubBindingsToSearch(prev, selectedThread.resourceBindings)
+                        : new URLSearchParams(prev);
+                      next.set("threadId", threadId);
+                      return next;
+                    }, { replace: true });
+                    setMobileAssistSheet(null);
+                  }}
+                  onCreate={() => {
+                    void requestThreadCreation({ title: DEFAULT_THREAD_TITLE, resourceBindings: {} });
+                    setMobileAssistSheet(null);
+                  }}
+                  onArchive={(threadId, archived) => void archiveThread(threadId, archived)}
+                  onDelete={(threadId) => void removeThread(threadId)}
+                />
+              </SheetBody>
+            </SheetContent>
+          </Sheet>
         </div>
-      </div>
+      ) : (
+        <div className="grid min-h-[72vh] gap-4 lg:grid-cols-[minmax(0,1fr)_320px] xl:h-[calc(100vh-13rem)] xl:grid-cols-[240px_minmax(0,1fr)_320px]">
+          <div id="creative-hub-activity" className="min-h-0 scroll-mt-4 lg:col-start-1 lg:row-start-1 xl:col-start-2">
+            <CreativeHubConversation
+              runtime={runtimeState.runtime}
+              onQuickAction={(prompt) => void handleQuickAction(prompt)}
+              interrupt={runtimeState.interrupt}
+              approvalNote={approvalNote}
+              onApprovalNoteChange={setApprovalNote}
+              onResolveInterrupt={(action) => void handleResolveInterrupt(action)}
+              approvalPending={approvalPending}
+              diagnostics={stateQuery.data?.data?.diagnostics}
+              loading={runtimeState.isThreadLoading}
+              errorMessage={runtimeState.threadLoadError ?? ""}
+              onRetry={runtimeState.retryThreadLoad}
+              actionDisabled={workspaceActionDisabled}
+            />
+          </div>
+
+          <div id="creative-hub-context" className="min-h-0 scroll-mt-4 lg:col-start-2 lg:row-start-1 xl:col-start-3">
+            <CreativeHubSidebar
+              thread={currentThread}
+              bindings={currentBindings}
+              novels={novels}
+              interrupt={runtimeState.interrupt}
+              diagnostics={stateQuery.data?.data?.diagnostics}
+              productionStatus={productionStatus}
+              novelSetup={novelSetup}
+              latestTurnSummary={latestTurnSummary}
+              currentCheckpointId={currentCheckpointId}
+              modelSummary={{
+                provider: llm.provider,
+                model: llm.model,
+                temperature: llm.temperature,
+                maxTokens: llm.maxTokens,
+              }}
+              defaultRuntimeDetailsCollapsed={defaultRuntimeDetailsCollapsed}
+              actionDisabled={workspaceActionDisabled}
+              novelsLoading={novelsQuery.isLoading}
+              novelsErrorMessage={novelsQuery.error instanceof Error ? novelsQuery.error.message : novelsQuery.error ? "小说列表加载失败。" : ""}
+              novelsRetrying={novelsQuery.isFetching}
+              onToggleRuntimeDetailsDefault={() => {
+                setDefaultRuntimeDetailsCollapsed((value) => !value);
+              }}
+              onRetryNovels={() => void novelsQuery.refetch()}
+              onNovelChange={(novelId) => handleBindingsChange({ novelId: novelId || null })}
+              onQuickAction={(prompt) => void handleQuickAction(prompt)}
+              onCreateNovel={handleCreateNovelQuickAction}
+              onStartProduction={handleQuickAction}
+            />
+          </div>
+
+          <div className="min-h-0 lg:col-span-2 lg:row-start-2 xl:col-span-1 xl:col-start-1 xl:row-start-1">
+            <CreativeHubThreadList
+              threads={threads}
+              activeThreadId={activeThreadId}
+              loading={threadsQuery.isLoading}
+              errorMessage={threadsQuery.error instanceof Error ? threadsQuery.error.message : threadsQuery.error ? "创作线程加载失败。" : ""}
+              retryPending={threadsQuery.isFetching}
+              actionPending={createThreadMutation.isPending}
+              actionDisabled={threadNavigationDisabled}
+              pendingThreadId={threadActionPendingId}
+              onRetry={() => void threadsQuery.refetch()}
+              onSelect={(threadId) => {
+                const selectedThread = threads.find((thread) => thread.id === threadId);
+                setSearchParams((prev) => {
+                  const next = selectedThread
+                    ? applyCreativeHubBindingsToSearch(prev, selectedThread.resourceBindings)
+                    : new URLSearchParams(prev);
+                  next.set("threadId", threadId);
+                  return next;
+                }, { replace: true });
+              }}
+              onCreate={() => void requestThreadCreation({ title: DEFAULT_THREAD_TITLE, resourceBindings: {} })}
+              onArchive={(threadId, archived) => void archiveThread(threadId, archived)}
+              onDelete={(threadId) => void removeThread(threadId)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

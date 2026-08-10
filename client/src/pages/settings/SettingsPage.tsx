@@ -19,6 +19,9 @@ import {
   testModelRouteConnectivity,
 } from "@/api/settings";
 import { queryKeys } from "@/api/queryKeys";
+import { useCreationSetup } from "@/components/onboarding/CreationSetupContext";
+import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
+import { Button } from "@/components/ui/button";
 import AutoDirectorSettingsSection from "./AutoDirectorSettingsSection";
 import ProviderConfigDialog, { type ProviderFormState } from "./components/ProviderConfigDialog";
 import ProviderSettingsSection from "./components/ProviderSettingsSection";
@@ -49,6 +52,8 @@ function formatConnectionTestResult(response: Awaited<ReturnType<typeof testLLMC
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const isMobileViewport = useIsMobileViewport();
+  const { readyForCreation, openQuickSetup } = useCreationSetup();
   const [editingProvider, setEditingProvider] = useState("");
   const [isCreatingCustomProvider, setIsCreatingCustomProvider] = useState(false);
   const [form, setForm] = useState<ProviderFormState>({
@@ -460,7 +465,22 @@ export default function SettingsPage() {
   const providerSubmitLabel = isSavingProvider ? "保存中..." : isCreatingCustomProvider ? "创建厂商" : "保存";
 
   return (
-    <div className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsPageRoot}>
+    <div className={`${AUTO_DIRECTOR_MOBILE_CLASSES.settingsPageRoot} mobile-page-settings`}>
+      {isMobileViewport ? (
+        <section className="rounded-xl border border-primary/25 bg-primary/5 p-3">
+          <div className="text-sm font-semibold text-foreground">
+            {readyForCreation ? "创作环境已就绪" : "先完成快捷配置"}
+          </div>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {readyForCreation
+              ? "需要换厂商、密钥或默认模型时，可打开快捷配置；完整厂商与路由维护仍在下方。"
+              : "只需选择厂商、填写密钥或地址，并确认文本模型可用，就可以开始写小说。"}
+          </p>
+          <Button type="button" className="mt-3 h-11 min-h-11 w-full text-base" onClick={openQuickSetup}>
+            {readyForCreation ? "打开快捷配置" : "开始快捷配置"}
+          </Button>
+        </section>
+      ) : null}
       <SettingsSectionGroup
         title="开始创作必需"
         description="先让模型和任务路由可用，新手就能进入自动导演、开书和章节生产。"

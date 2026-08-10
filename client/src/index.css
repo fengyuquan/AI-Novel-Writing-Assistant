@@ -352,9 +352,16 @@ body {
   .mobile-route-novel-edit,
   .mobile-route-chapter-edit,
   .mobile-page-novel-edit,
-  .mobile-page-chapter-edit {
+  .mobile-page-chapter-edit,
+  .mobile-page-creative-hub,
+  .mobile-page-settings {
     width: 100%;
     max-width: 100%;
+  }
+
+  .mobile-page-creative-hub,
+  .mobile-page-settings {
+    overflow-x: hidden;
   }
 
   .mobile-page-novel-edit * {
