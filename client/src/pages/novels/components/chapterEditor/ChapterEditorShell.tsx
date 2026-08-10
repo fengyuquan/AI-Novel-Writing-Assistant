@@ -27,6 +27,7 @@ import { ChevronLeft, ChevronRight, ClipboardList, Sparkles } from "lucide-react
 import ChapterEditorDirectorPanel from "./ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "./ChapterEditorSidebar";
 import ChapterTextEditor from "./ChapterTextEditor";
+import MobileChapterRewriteActionBar from "./MobileChapterRewriteActionBar";
 import SelectionAIFloatingToolbar from "./SelectionAIFloatingToolbar";
 import type {
   ChapterEditorSelectionRange,
@@ -106,6 +107,13 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   const [revisionScope, setRevisionScope] = useState<ChapterEditorRevisionScope>("selection");
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [selectedDiagnosticId, setSelectedDiagnosticId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Keep the body visible while comparing: close the instruct sheet once rewrite starts.
+    if (session.status === "loading" || session.status === "ready" || session.status === "error") {
+      setAssistSheet((current) => (current === "ai" ? null : current));
+    }
+  }, [session.status]);
 
   useEffect(() => {
     const nextContent = normalizedChapterContent;
@@ -365,6 +373,8 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   const handleReject = () => {
     setSession(EMPTY_SESSION);
+    setSelection(null);
+    setSelectionToolbarPosition(null);
   };
 
   const handleFocusDiagnostic = (card: ChapterEditorDiagnosticCard) => {
@@ -518,8 +528,14 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   );
 
   if (isMobileViewport) {
+    const showRewriteActionBar = session.status !== "idle" || Boolean(selection);
+    const bottomPadClassName = showRewriteActionBar ? "pb-44" : "pb-28";
+    const scrollEdgeBottomClassName = showRewriteActionBar
+      ? "bottom-[calc(9.5rem+env(safe-area-inset-bottom))]"
+      : "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]";
+
     return (
-      <div className="mobile-page-chapter-edit w-full max-w-full space-y-3 overflow-x-hidden px-3 pb-28 pt-3">
+      <div className={`mobile-page-chapter-edit w-full max-w-full space-y-3 overflow-x-hidden px-3 pt-3 ${bottomPadClassName}`}>
         <header className="sticky top-0 z-30 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-start gap-2">
@@ -589,36 +605,47 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
               AI 改写
             </Button>
           </div>
-          {selection ? (
-            <Button
-              type="button"
-              className="h-11 min-h-11 w-full"
-              onClick={() => setAssistSheet("ai")}
-            >
-              已选中片段，打开 AI 改写
-            </Button>
+          {session.status === "ready" ? (
+            <p className="rounded-lg bg-primary/5 px-3 py-2 text-xs leading-5 text-muted-foreground">
+              正文已显示对比结果。在底部选用版本，或点「说明」查看改写意图。
+            </p>
           ) : null}
         </header>
 
         {textEditor}
 
-        <div
-          className="fixed left-3 right-3 z-40 rounded-xl border border-border/70 bg-background/95 p-2 shadow-lg backdrop-blur"
-          style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
-        >
-          <Button
-            type="button"
-            className="h-11 min-h-11 w-full text-base"
-            disabled={!isDirty || saveMutation.isPending}
-            onClick={() => saveMutation.mutate(contentDraft)}
+        {showRewriteActionBar ? (
+          <MobileChapterRewriteActionBar
+            session={session}
+            activeCandidate={activeCandidate}
+            hasSelection={Boolean(selection)}
+            isGenerating={previewMutation.isPending}
+            isApplying={acceptMutation.isPending}
+            onRunOperation={(operation) => handleRunOperation(operation)}
+            onOpenAiSheet={() => setAssistSheet("ai")}
+            onSelectCandidate={(candidateId) => setSession((current) => ({ ...current, activeCandidateId: candidateId }))}
+            onAccept={() => acceptMutation.mutate()}
+            onReject={handleReject}
+            onRegenerate={handleRegenerate}
+            onOpenDetails={() => setAssistSheet("ai")}
+          />
+        ) : (
+          <div
+            className="fixed left-3 right-3 z-40 rounded-xl border border-border/70 bg-background/95 p-2 shadow-lg"
+            style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
           >
-            {saveMutation.isPending ? "保存中..." : isDirty ? "保存本章" : "已是最新"}
-          </Button>
-        </div>
+            <Button
+              type="button"
+              className="h-11 min-h-11 w-full text-base"
+              disabled={!isDirty || saveMutation.isPending}
+              onClick={() => saveMutation.mutate(contentDraft)}
+            >
+              {saveMutation.isPending ? "保存中..." : isDirty ? "保存本章" : "已是最新"}
+            </Button>
+          </div>
+        )}
 
-        <MobileScrollEdgeButtons
-          bottomOffsetClassName="bottom-[calc(5.5rem+env(safe-area-inset-bottom))]"
-        />
+        <MobileScrollEdgeButtons bottomOffsetClassName={scrollEdgeBottomClassName} />
 
         <Sheet open={assistSheet === "info"} onOpenChange={(open) => !open && setAssistSheet(null)}>
           <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
@@ -633,9 +660,13 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
         <Sheet open={assistSheet === "ai"} onOpenChange={(open) => !open && setAssistSheet(null)}>
           <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
             <SheetHeader>
-              <SheetTitle>AI 改写</SheetTitle>
+              <SheetTitle>{session.status === "ready" ? "改写说明" : "AI 改写"}</SheetTitle>
               <SheetDescription>
-                {selection ? "已选中正文片段，可直接按推荐或自定义指令改写。" : "先选中正文，或按整章 / 推荐任务继续改写。"}
+                {session.status === "ready"
+                  ? "查看这次改写意图与候选说明。正文对比已留在页面上。"
+                  : selection
+                    ? "已选中正文片段，可直接按推荐或自定义指令改写。"
+                    : "先选中正文，或按整章 / 推荐任务继续改写。"}
               </SheetDescription>
             </SheetHeader>
             <SheetBody className="px-3 pb-4">{directorPanel}</SheetBody>
