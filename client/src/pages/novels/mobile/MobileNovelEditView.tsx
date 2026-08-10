@@ -29,6 +29,8 @@ import {
 import MobileAutoDirectorStatusCard from "./MobileAutoDirectorStatusCard";
 import MobileFloatingSaveButton from "./MobileFloatingSaveButton";
 import MobileNovelStepNav from "./MobileNovelStepNav";
+import MobileNovelWorkspaceNavMenu from "./MobileNovelWorkspaceNavMenu";
+import MobileScrollEdgeButtons from "@/components/layout/mobile/MobileScrollEdgeButtons";
 import {
   getMobileNovelSaveState,
   getMobileNovelWorkspaceStatusText,
@@ -126,9 +128,17 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
     <div className={`mobile-page-novel-edit min-h-screen bg-background px-4 pt-3 ${normalizedActiveTab === "chapter" ? "pb-40" : "pb-28"}`}>
       <header className="mobile-novel-workspace-header sticky top-0 z-30 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-3 pt-2 backdrop-blur">
         <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-foreground">{novelTitle}</h1>
-            <p className="mt-0.5 text-xs text-muted-foreground">{statusText}</p>
+          <div className="flex min-w-0 items-start gap-2">
+            <MobileNovelWorkspaceNavMenu
+              novelId={id}
+              novelTitle={novelTitle}
+              directorTaskId={takeover?.taskId}
+              onOpenTaskDrawer={taskDrawer ? () => taskDrawer.onOpenChange(true) : undefined}
+            />
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold text-foreground">{novelTitle}</h1>
+              <p className="mt-0.5 text-xs text-muted-foreground">{statusText}</p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {taskDrawer ? (
@@ -252,6 +262,13 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
       </main>
 
       <MobileFloatingSaveButton {...getMobileNovelSaveState(normalizedActiveTab, props)} />
+      <MobileScrollEdgeButtons
+        bottomOffsetClassName={
+          normalizedActiveTab === "chapter"
+            ? "bottom-[calc(7.5rem+env(safe-area-inset-bottom))]"
+            : "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]"
+        }
+      />
       {taskDrawer ? <NovelTaskDrawer {...taskDrawer} /> : null}
     </div>
   );

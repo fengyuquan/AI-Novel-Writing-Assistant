@@ -20,6 +20,7 @@ import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog"
 import { Button } from "@/components/ui/button";
 import { VisualAssetLibraryDialog } from "@/components/visualAssets";
 import { cn } from "@/lib/utils";
+import MobileScrollEdgeButtons from "./MobileScrollEdgeButtons";
 import {
   getMobileMoreNavGroups,
   getMobileNavGroupForPath,
@@ -78,7 +79,6 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
             <ProjectGithubLink />
           </div>
           <div className="flex items-center gap-2">
-            <LiveExecutionDialog compact className="h-8 w-8 px-0" />
             <Button asChild size="sm" className="h-8 px-3">
               <Link to="/novels/auto-director" onClick={() => setMoreOpen(false)}>
                 <Plus className="h-3.5 w-3.5" />
@@ -113,6 +113,9 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
       <main className={cn("mobile-site-main mobile-safe-bottom", getMobileRouteClassName(location.pathname))}>
         {children}
       </main>
+
+      <LiveExecutionDialog compact floating />
+      <MobileScrollEdgeButtons />
 
       {moreOpen ? (
         <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] top-14 z-50 bg-black/20 px-3 pb-3 backdrop-blur-sm">

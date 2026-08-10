@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronDown, ChevronRight, Eraser, GripHorizontal, Maximize2, Minimize2, Radio, X } from "lucide-react";
 import type { LlmLiveSessionSnapshot } from "@ai-novel/shared/types/llmLive";
@@ -33,9 +33,49 @@ function sessionId(session: LlmLiveSessionSnapshot): string {
 
 interface LiveExecutionDialogProps {
   compact?: boolean;
+  /** Fixed floating trigger that can be dragged; position persists in localStorage. */
+  floating?: boolean;
   className?: string;
   taskId?: string | null;
   autoOpenOnActivity?: boolean;
+}
+
+const TRIGGER_POSITION_STORAGE_KEY = "ai-novel.live-execution.trigger.position";
+const TRIGGER_SIZE_PX = 36;
+const DRAG_THRESHOLD_PX = 8;
+
+type TriggerPosition = {
+  left: number;
+  top: number;
+};
+
+function clampTriggerPosition(position: TriggerPosition): TriggerPosition {
+  const maxLeft = Math.max(8, window.innerWidth - TRIGGER_SIZE_PX - 8);
+  const maxTop = Math.max(8, window.innerHeight - TRIGGER_SIZE_PX - 8);
+  return {
+    left: Math.min(Math.max(8, position.left), maxLeft),
+    top: Math.min(Math.max(8, position.top), maxTop),
+  };
+}
+
+function readStoredTriggerPosition(): TriggerPosition | null {
+  try {
+    const raw = window.localStorage.getItem(TRIGGER_POSITION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<TriggerPosition>;
+    if (typeof parsed.left !== "number" || typeof parsed.top !== "number") {
+      return null;
+    }
+    return clampTriggerPosition({ left: parsed.left, top: parsed.top });
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTriggerPosition(position: TriggerPosition): void {
+  window.localStorage.setItem(TRIGGER_POSITION_STORAGE_KEY, JSON.stringify(clampTriggerPosition(position)));
 }
 
 export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
@@ -44,9 +84,19 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [followingLatest, setFollowingLatest] = useState(true);
   const [collapsedSessionIds, setCollapsedSessionIds] = useState<Set<string>>(() => new Set());
+  const [triggerPosition, setTriggerPosition] = useState<TriggerPosition | null>(null);
   const logRef = useRef<HTMLDivElement | null>(null);
   const latestSessionRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{ pointerX: number; pointerY: number; offsetX: number; offsetY: number } | null>(null);
+  const triggerDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originLeft: number;
+    originTop: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressTriggerClickRef = useRef(false);
   const followLatestRef = useRef(true);
   const latestSessionIdRef = useRef<string | null>(null);
   const autoOpenedSessionIdsRef = useRef(new Set<string>());
@@ -64,6 +114,25 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
     ? latestSession.preview.slice(-1200)
     : "等待模型开始返回内容…";
   const activeCount = sessions.filter((session) => isActive(session.phase)).length;
+  const floating = Boolean(props.floating);
+
+  useEffect(() => {
+    if (!floating) {
+      return;
+    }
+    setTriggerPosition(readStoredTriggerPosition());
+  }, [floating]);
+
+  useEffect(() => {
+    if (!floating) {
+      return;
+    }
+    const onResize = () => {
+      setTriggerPosition((current) => (current ? clampTriggerPosition(current) : current));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [floating]);
 
   useEffect(() => {
     if (!props.autoOpenOnActivity) {
@@ -160,20 +229,103 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
     setFollowingLatest(true);
   };
 
+  const resolveDefaultTriggerPosition = (element: HTMLElement): TriggerPosition => {
+    const rect = element.getBoundingClientRect();
+    return clampTriggerPosition({ left: rect.left, top: rect.top });
+  };
+
+  const handleTriggerPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!floating || event.button !== 0) {
+      return;
+    }
+    const element = event.currentTarget;
+    const origin = triggerPosition ?? resolveDefaultTriggerPosition(element);
+    triggerDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originLeft: origin.left,
+      originTop: origin.top,
+      moved: false,
+    };
+    element.setPointerCapture(event.pointerId);
+  };
+
+  const handleTriggerPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = triggerDragRef.current;
+    if (!floating || !drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX) {
+      return;
+    }
+    drag.moved = true;
+    const next = clampTriggerPosition({
+      left: drag.originLeft + deltaX,
+      top: drag.originTop + deltaY,
+    });
+    setTriggerPosition(next);
+  };
+
+  const finishTriggerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = triggerDragRef.current;
+    if (!floating || !drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    if (drag.moved) {
+      suppressTriggerClickRef.current = true;
+      setTriggerPosition((current) => {
+        if (current) {
+          writeStoredTriggerPosition(current);
+        }
+        return current;
+      });
+    }
+    triggerDragRef.current = null;
+  };
+
+  const handleTriggerClick = () => {
+    if (suppressTriggerClickRef.current) {
+      suppressTriggerClickRef.current = false;
+      return;
+    }
+    handleOpenChange(true);
+  };
+
   return (
     <>
       <Button
         type="button"
         size="sm"
         variant="outline"
-        className={cn("relative", props.className)}
-        onClick={() => handleOpenChange(true)}
-        title="查看 AI 创作实况"
+        className={cn(
+          "relative",
+          floating && "fixed z-50 h-9 w-9 touch-none bg-background px-0 shadow-sm",
+          floating && !triggerPosition && "right-3 top-3",
+          props.className,
+        )}
+        style={
+          floating && triggerPosition
+            ? { left: triggerPosition.left, top: triggerPosition.top, right: "auto" }
+            : undefined
+        }
+        onPointerDown={handleTriggerPointerDown}
+        onPointerMove={handleTriggerPointerMove}
+        onPointerUp={finishTriggerDrag}
+        onPointerCancel={finishTriggerDrag}
+        onClick={handleTriggerClick}
+        title={floating ? "查看 AI 创作实况（可拖动位置）" : "查看 AI 创作实况"}
+        aria-label="查看 AI 创作实况"
       >
-        <Radio className={activeCount > 0 ? "mr-1.5 h-3.5 w-3.5 animate-pulse text-primary" : "mr-1.5 h-3.5 w-3.5"} aria-hidden="true" />
+        <Radio className={cn("h-3.5 w-3.5", activeCount > 0 ? "animate-pulse text-primary" : null, !props.compact && "mr-1.5")} aria-hidden="true" />
         {!props.compact ? <span className="hidden sm:inline">AI 实况</span> : null}
         {activeCount > 0 ? (
-          <Badge className="ml-1.5 h-5 min-w-5 px-1.5 text-[10px]" aria-label={`${activeCount} 项 AI 生成正在进行`}>
+          <Badge
+            className={cn("h-5 min-w-5 px-1.5 text-[10px]", props.compact ? "absolute -right-1 -top-1" : "ml-1.5")}
+            aria-label={`${activeCount} 项 AI 生成正在进行`}
+          >
             {activeCount}
           </Badge>
         ) : null}

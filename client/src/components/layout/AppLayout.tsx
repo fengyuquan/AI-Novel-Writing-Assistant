@@ -97,7 +97,7 @@ export default function AppLayout() {
       <TaskRecoveryProvider>
         <div className="min-h-screen bg-background">
           <AutoDirectorPauseNotificationWatcher />
-          <LiveExecutionDialog compact className="fixed right-3 top-3 z-50 h-9 w-9 bg-background px-0 shadow-sm" />
+          <LiveExecutionDialog compact floating />
           <LLMSelectionBootstrap />
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />

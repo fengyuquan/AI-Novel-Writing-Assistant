@@ -31,6 +31,12 @@
 - 需要手机上保留多列的网格加 `mobile-grid-keep`（或已登记的 `home-status-summary-grid` / `auto-director-follow-up-section-grid`），避免被全局「响应式列塌成一列」覆盖。
 - `index.css` 的 `.mobile-route-*` 仅保留薄壳（宽度、overflow、输入字号）与尚未迁移的专家页密化；禁止再给已迁移主链页加强制列数 / 隐藏说明文字。
 
+### 手机导航与浮动控件
+
+- 页面级「回到顶部 / 去到底部」挂在 `MobileScrollEdgeButtons`：站点壳与小说工作区各挂一份，避开章节 Bottom Sheet；底部偏移需躲开粘性主 CTA / 底栏。
+- AI 创作实况 compact 触发器在手机上使用 `floating`：可拖动，位置写入 `localStorage`（`ai-novel.live-execution.trigger.position`）；默认右上。轻点打开，拖动超过阈值不打开。
+- 小说工作区（含章节执行）绕过站点底栏，必须在 `MobileNovelEditView` 提供左侧「工作区导航」抽屉：首页、我的小说、当前工作区、运行记录；有导演任务时提供继续自动导演入口。
+
 ### 小说工作区步骤
 
 - 手机小说壳先展示「当前步骤」与「去推荐步骤」。
