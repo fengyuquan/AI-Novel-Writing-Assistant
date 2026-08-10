@@ -80,7 +80,7 @@ function writeStoredTriggerPosition(position: TriggerPosition): void {
 
 export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
   const [open, setOpen] = useState(false);
-  const [briefMode, setBriefMode] = useState(false);
+  const [briefMode, setBriefMode] = useState(true);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [followingLatest, setFollowingLatest] = useState(true);
   const [collapsedSessionIds, setCollapsedSessionIds] = useState<Set<string>>(() => new Set());
