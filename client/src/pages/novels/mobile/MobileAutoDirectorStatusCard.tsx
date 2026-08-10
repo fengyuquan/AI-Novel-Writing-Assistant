@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import WorkflowProgressBar, {
@@ -50,10 +51,27 @@ function cardClass(mode: NovelEditTakeoverState["mode"]): string {
   return "border-primary/25 bg-primary/[0.04]";
 }
 
+function primaryActionLabel(mode: NovelEditTakeoverState["mode"]): string {
+  if (mode === "failed") {
+    return "恢复自动导演";
+  }
+  if (mode === "waiting" || mode === "action_required") {
+    return "继续处理";
+  }
+  return "查看自动导演";
+}
+
 export default function MobileAutoDirectorStatusCard({ takeover }: MobileAutoDirectorStatusCardProps) {
   const resolvedProgress = typeof takeover.progress === "number"
     ? normalizeProgressPercent(takeover.progress)
     : null;
+  const primaryAction = takeover.actions?.find((action) => !action.disabled) ?? takeover.actions?.[0] ?? null;
+  const recoverHref = takeover.taskId
+    ? `/novels/auto-director?taskId=${encodeURIComponent(takeover.taskId)}`
+    : null;
+  const needsRecovery = takeover.mode === "failed"
+    || takeover.mode === "waiting"
+    || takeover.mode === "action_required";
 
   return (
     <section className={cn("mobile-auto-director-status-card rounded-xl border p-3", cardClass(takeover.mode))}>
@@ -89,21 +107,28 @@ export default function MobileAutoDirectorStatusCard({ takeover }: MobileAutoDir
         </div>
       ) : null}
 
-      {takeover.actions && takeover.actions.length > 0 ? (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {takeover.actions.map((action) => (
+      {needsRecovery || primaryAction || recoverHref ? (
+        <div className="mt-3 flex flex-col gap-2">
+          {primaryAction ? (
             <Button
-              key={action.label}
               type="button"
-              size="sm"
-              variant={action.variant ?? (takeover.mode === "running" ? "outline" : "default")}
-              disabled={action.disabled}
-              className="shrink-0"
-              onClick={action.onClick}
+              className="h-11 min-h-11 w-full text-base"
+              variant={primaryAction.variant ?? (takeover.mode === "running" ? "outline" : "default")}
+              disabled={primaryAction.disabled}
+              onClick={primaryAction.onClick}
             >
-              {action.label}
+              {primaryAction.label}
             </Button>
-          ))}
+          ) : recoverHref ? (
+            <Button asChild className="h-11 min-h-11 w-full text-base">
+              <Link to={recoverHref}>{primaryActionLabel(takeover.mode)}</Link>
+            </Button>
+          ) : null}
+          {primaryAction && recoverHref ? (
+            <Button asChild variant="outline" className="h-11 min-h-11 w-full text-base">
+              <Link to={recoverHref}>打开自动导演页</Link>
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </section>

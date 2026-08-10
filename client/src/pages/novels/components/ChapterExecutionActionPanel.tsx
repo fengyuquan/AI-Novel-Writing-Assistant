@@ -78,7 +78,7 @@ interface ChapterExecutionActionPanelProps {
   repairRunStatus?: Extract<SSEFrame, { type: "run_status" }> | null;
 }
 
-function resolvePrimaryAction(params: {
+export function resolvePrimaryAction(params: {
   novelId: string;
   selectedChapter?: Chapter;
   hasCharacters: boolean;

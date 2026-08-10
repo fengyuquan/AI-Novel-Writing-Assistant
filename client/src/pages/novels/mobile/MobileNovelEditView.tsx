@@ -87,6 +87,11 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
     }
     return "最近任务";
   })();
+  const taskButtonVariant = taskDrawer?.task?.status === "failed"
+    ? "destructive"
+    : taskDrawer?.task?.status === "waiting_approval"
+      ? "default"
+      : "outline";
 
   const selectTab = (tab: NovelWorkspaceTab) => {
     props.onActiveTabChange(tab);
@@ -118,101 +123,104 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
   };
 
   return (
-    <div className="mobile-page-novel-edit min-h-screen bg-background px-4 pb-28 pt-3">
+    <div className={`mobile-page-novel-edit min-h-screen bg-background px-4 pt-3 ${normalizedActiveTab === "chapter" ? "pb-40" : "pb-28"}`}>
       <header className="mobile-novel-workspace-header sticky top-0 z-30 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-3 pt-2 backdrop-blur">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold text-foreground">{novelTitle}</h1>
             <p className="mt-0.5 text-xs text-muted-foreground">{statusText}</p>
           </div>
-          <Dialog open={isToolsOpen} onOpenChange={setIsToolsOpen}>
-            <DialogTrigger asChild>
-              <Button type="button" size="icon" variant="outline" className="shrink-0" aria-label="打开创作工具">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl">
-              <DialogHeader>
-                <DialogTitle>创作工具</DialogTitle>
-                <DialogDescription>查看任务进度，导出当前步骤或整本书内容。</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3 text-sm">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">章节</div>
-                    <div className="mt-1 font-semibold">{generatedChapters}/{Math.max(totalChapters, 1)}</div>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">待修复</div>
-                    <div className="mt-1 font-semibold">{pendingRepairs}</div>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">任务</div>
-                    <div className="mt-1 truncate font-semibold">{taskAttentionLabel ?? "无"}</div>
-                  </div>
-                </div>
-
-                {taskDrawer ? (
-                  <Button
-                    type="button"
-                    variant={taskDrawer.task?.status === "failed" ? "destructive" : "outline"}
-                    className="w-full justify-between"
-                    onClick={() => {
-                      taskDrawer.onOpenChange(true);
-                      setIsToolsOpen(false);
-                    }}
-                  >
-                    <span>查看任务进度</span>
-                    {taskAttentionLabel ? <Badge variant="secondary">{taskAttentionLabel}</Badge> : null}
-                  </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {taskDrawer ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={taskButtonVariant}
+                className="h-10 min-h-10 gap-1.5 px-3"
+                onClick={() => taskDrawer.onOpenChange(true)}
+              >
+                <span>任务</span>
+                {taskAttentionLabel ? (
+                  <Badge variant="secondary" className="max-w-[5.5rem] truncate">
+                    {taskAttentionLabel}
+                  </Badge>
                 ) : null}
+              </Button>
+            ) : null}
+            <Dialog open={isToolsOpen} onOpenChange={setIsToolsOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" size="icon" variant="outline" className="h-10 w-10 shrink-0" aria-label="打开创作工具">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-h-[88vh] w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl">
+                <DialogHeader>
+                  <DialogTitle>创作工具</DialogTitle>
+                  <DialogDescription>导出当前步骤或整本书内容。</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 text-sm">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">章节</div>
+                      <div className="mt-1 font-semibold">{generatedChapters}/{Math.max(totalChapters, 1)}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">待修复</div>
+                      <div className="mt-1 font-semibold">{pendingRepairs}</div>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                      <div className="text-xs text-muted-foreground">任务</div>
+                      <div className="mt-1 truncate font-semibold">{taskAttentionLabel ?? "无"}</div>
+                    </div>
+                  </div>
 
-                <div className="rounded-xl border border-border/70 p-3">
-                  <div className="text-sm font-medium">导出当前步骤</div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => exportControls.onExportCurrent("markdown")}
-                      disabled={!exportControls.canExportCurrentStep || exportControls.isExportingCurrentMarkdown}
-                    >
-                      {exportControls.isExportingCurrentMarkdown ? "导出中..." : "Markdown"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => exportControls.onExportCurrent("json")}
-                      disabled={!exportControls.canExportCurrentStep || exportControls.isExportingCurrentJson}
-                    >
-                      {exportControls.isExportingCurrentJson ? "导出中..." : "JSON"}
-                    </Button>
+                  <div className="rounded-xl border border-border/70 p-3">
+                    <div className="text-sm font-medium">导出当前步骤</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => exportControls.onExportCurrent("markdown")}
+                        disabled={!exportControls.canExportCurrentStep || exportControls.isExportingCurrentMarkdown}
+                      >
+                        {exportControls.isExportingCurrentMarkdown ? "导出中..." : "Markdown"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => exportControls.onExportCurrent("json")}
+                        disabled={!exportControls.canExportCurrentStep || exportControls.isExportingCurrentJson}
+                      >
+                        {exportControls.isExportingCurrentJson ? "导出中..." : "JSON"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 p-3">
+                    <div className="text-sm font-medium">导出整本书</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => exportControls.onExportFull("markdown")}
+                        disabled={exportControls.isExportingFullMarkdown}
+                      >
+                        {exportControls.isExportingFullMarkdown ? "导出中..." : "Markdown"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => exportControls.onExportFull("json")}
+                        disabled={exportControls.isExportingFullJson}
+                      >
+                        {exportControls.isExportingFullJson ? "导出中..." : "JSON"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                <div className="rounded-xl border border-border/70 p-3">
-                  <div className="text-sm font-medium">导出整本书</div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => exportControls.onExportFull("markdown")}
-                      disabled={exportControls.isExportingFullMarkdown}
-                    >
-                      {exportControls.isExportingFullMarkdown ? "导出中..." : "Markdown"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => exportControls.onExportFull("json")}
-                      disabled={exportControls.isExportingFullJson}
-                    >
-                      {exportControls.isExportingFullJson ? "导出中..." : "JSON"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="mt-3">

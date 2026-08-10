@@ -31,8 +31,12 @@ export default function SelectionAIFloatingToolbar(props: SelectionAIFloatingToo
 
   return (
     <div
-      className="absolute z-20 w-[320px] rounded-2xl border border-border/70 bg-background/95 p-2 shadow-xl backdrop-blur"
-      style={{ top: position.top, left: position.left }}
+      className="absolute z-20 w-[min(320px,calc(100vw-1.5rem))] rounded-2xl border border-border/70 bg-background/95 p-2 shadow-xl backdrop-blur"
+      style={{
+        top: position.top,
+        left: Math.max(8, position.left),
+        maxWidth: "calc(100% - 16px)",
+      }}
     >
       <div className="flex flex-wrap gap-2">
         <Button
@@ -69,7 +73,7 @@ export default function SelectionAIFloatingToolbar(props: SelectionAIFloatingToo
       {isCustomOpen ? (
         <div className="mt-2 space-y-2 rounded-xl border border-border/70 bg-muted/20 p-2">
           <textarea
-            className="min-h-[96px] w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+            className="min-h-[96px] w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-base outline-none sm:text-sm"
             placeholder="例如：让这段更压抑一点，保留原信息，但把节奏压得更紧。"
             value={customInstruction}
             onChange={(event) => setCustomInstruction(event.target.value)}

@@ -8,6 +8,8 @@ import type { CharacterResourceProposalSummary } from "@ai-novel/shared/types/ch
 import type { AutoDirectorAction } from "@ai-novel/shared/types/autoDirectorFollowUp";
 import AICockpit from "@/components/autoDirector/AICockpit";
 import LLMSelector from "@/components/common/LLMSelector";
+import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
+import { MobileNextActionCard } from "@/components/layout/mobile/MobileNextActionCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +19,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Link } from "react-router-dom";
 import TaskCenterManualEditImpactCard from "@/pages/tasks/components/TaskCenterManualEditImpactCard";
 import TaskCenterRuntimePolicyCard from "@/pages/tasks/components/TaskCenterRuntimePolicyCard";
@@ -279,6 +290,7 @@ export default function NovelTaskDrawer({
   capabilities,
   onOpenFullTaskCenter,
 }: NovelTaskDrawerState) {
+  const isMobileViewport = useIsMobileViewport();
   const milestones = Array.isArray(task?.meta.milestones)
     ? task.meta.milestones as NovelWorkflowMilestone[]
     : [];
@@ -340,28 +352,80 @@ export default function NovelTaskDrawer({
   const canShowManualImpact = capabilities?.canInspectManualEditImpact !== false && Boolean(task);
   const canShowRetryWithOverrideModel = capabilities?.canRetryWithOverrideModel === true;
   const canShowFollowUp = capabilities?.availableFollowUps !== false && Boolean(followUp);
+  const nextActionTitle = projection?.nextActionLabel
+    || primaryActionLabel
+    || dashboardView?.currentAction
+    || displayState?.currentAction
+    || "查看当前推进";
+  const nextActionDescription = projection?.userReason
+    || followUp?.followUpSummary
+    || task?.recoveryHint
+    || task?.blockingReason
+    || "先处理当前推荐动作，再继续往后写。";
+  const nextActionTone = task?.pendingManualRecovery || task?.status === "failed"
+    ? "destructive"
+    : task?.status === "waiting_approval" || projection?.displayState === "needs_confirmation"
+      ? "warning"
+      : "default";
+  const directorRecoverHref = task?.id ? `/novels/auto-director?taskId=${encodeURIComponent(task.id)}` : null;
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="left-auto right-0 top-0 flex h-dvh max-h-dvh w-full max-w-[520px] translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-y-0 border-r-0 border-l bg-background p-0 sm:max-w-[520px]">
-        <DialogHeader className="border-b border-border/70 px-5 py-4">
-          <DialogTitle>执行详情</DialogTitle>
-          <DialogDescription>
-            查看本书 AI 推进记录、快捷处理动作和排查信息。
-          </DialogDescription>
-        </DialogHeader>
+  const nextActionCard = primaryAction || projection?.nextActionLabel || directorRecoverHref ? (
+    <MobileNextActionCard
+      title="当前下一步"
+      description={nextActionDescription}
+      primaryLabel={primaryAction ? (primaryActionLabel || "继续处理") : "打开自动导演继续"}
+      onPrimary={primaryAction ? () => handleProjectionAction(primaryAction) : undefined}
+      primaryHref={!primaryAction && directorRecoverHref ? directorRecoverHref : undefined}
+      secondaryLabel={primaryAction && directorRecoverHref ? "打开自动导演页" : undefined}
+      secondaryHref={primaryAction && directorRecoverHref ? directorRecoverHref : undefined}
+      tone={nextActionTone}
+    />
+  ) : (
+    <MobileNextActionCard
+      title="当前下一步"
+      description={nextActionDescription}
+      primaryLabel={nextActionTitle}
+      primaryDisabled
+      tone="default"
+    />
+  );
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-          {task || projection ? (
-            <AICockpit
-              projection={projection}
-              mode="focusedNovel"
-              fallbackSummary={dashboardView?.currentAction || displayState?.currentAction || task?.blockingReason || task?.currentItemLabel || "当前没有需要处理的 AI 推进动作。"}
-              fallbackStatusLabel={dashboardView?.statusLabel ?? (task ? formatTaskStatus(task) : "未开启")}
-              showDetailsAction={false}
-              onAction={(_projection, action) => handleProjectionAction(action)}
-            />
-          ) : null}
+  const footerActions = (
+    <>
+      {primaryAction ? (
+        <Button type="button" className="h-11 min-h-11 w-full text-base" onClick={() => handleProjectionAction(primaryAction)}>
+          {primaryActionLabel || "继续处理"}
+        </Button>
+      ) : null}
+      {task?.sourceRoute ? (
+        <Button asChild type="button" variant="outline" className="h-11 min-h-11 w-full text-base">
+          <Link to={task.sourceRoute}>打开来源页面</Link>
+        </Button>
+      ) : null}
+      <Button
+        type="button"
+        variant={primaryAction ? "ghost" : "outline"}
+        className="h-11 min-h-11 w-full text-base"
+        onClick={onOpenFullTaskCenter}
+      >
+        打开后台任务中心
+      </Button>
+    </>
+  );
+
+  const drawerBody = (
+    <div className="space-y-5">
+      {isMobileViewport ? nextActionCard : null}
+      {task || projection ? (
+        <AICockpit
+          projection={projection}
+          mode="focusedNovel"
+          fallbackSummary={dashboardView?.currentAction || displayState?.currentAction || task?.blockingReason || task?.currentItemLabel || "当前没有需要处理的 AI 推进动作。"}
+          fallbackStatusLabel={dashboardView?.statusLabel ?? (task ? formatTaskStatus(task) : "未开启")}
+          showDetailsAction={false}
+          onAction={(_projection, action) => handleProjectionAction(action)}
+        />
+      ) : null}
 
           {resourceProposals.length > 0 ? (
             <section className="space-y-3 rounded-2xl border border-amber-300/60 bg-amber-50/40 p-4 dark:border-amber-700/50 dark:bg-amber-950/15">
@@ -650,23 +714,37 @@ export default function NovelTaskDrawer({
               当前小说还没有可见的自动导演任务。你可以继续手动创作，或在后台任务中心查看其他任务。
             </section>
           )}
-        </div>
+    </div>
+  );
 
-        <div className="space-y-2 border-t border-border/70 px-5 py-4">
-          {primaryAction ? (
-            <Button type="button" className="w-full" onClick={() => handleProjectionAction(primaryAction)}>
-              {primaryActionLabel || "继续处理"}
-            </Button>
-          ) : null}
-          {task?.sourceRoute ? (
-            <Button asChild type="button" variant="outline" className="w-full">
-              <Link to={task.sourceRoute}>打开来源页面</Link>
-            </Button>
-          ) : null}
-          <Button type="button" variant={primaryAction ? "ghost" : "outline"} className="w-full" onClick={onOpenFullTaskCenter}>
-            打开后台任务中心
-          </Button>
-        </div>
+  if (isMobileViewport) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+          <SheetHeader className="border-b border-border/70">
+            <SheetTitle>执行详情</SheetTitle>
+            <SheetDescription>
+              先看当前下一步，再处理推进记录和排查信息。
+            </SheetDescription>
+          </SheetHeader>
+          <SheetBody className="px-4 py-4">{drawerBody}</SheetBody>
+          <SheetFooter className="space-y-2">{footerActions}</SheetFooter>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="left-auto right-0 top-0 flex h-dvh max-h-dvh w-full max-w-[520px] translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-y-0 border-r-0 border-l bg-background p-0 sm:max-w-[520px]">
+        <DialogHeader className="border-b border-border/70 px-5 py-4">
+          <DialogTitle>执行详情</DialogTitle>
+          <DialogDescription>
+            查看本书 AI 推进记录、快捷处理动作和排查信息。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex-1 overflow-y-auto px-5 py-5">{drawerBody}</div>
+        <div className="space-y-2 border-t border-border/70 px-5 py-4">{footerActions}</div>
       </DialogContent>
     </Dialog>
   );
