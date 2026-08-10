@@ -30,7 +30,7 @@ export default function TaskCenterFilterPanel({
 }: TaskCenterFilterPanelProps) {
   return (
     <section aria-label="筛选运行记录" className="task-filter-card rounded-2xl bg-muted/20 px-4 py-3">
-      <div className="task-filter-controls grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(220px,1fr)_220px_auto] xl:items-center">
+      <div className="task-filter-controls grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[150px_150px_minmax(220px,1fr)_220px_auto] xl:items-center">
         <SelectControl
           aria-label="按任务类型筛选"
           className="task-filter-kind h-10 w-full rounded-xl border-border/45 bg-background px-3 text-sm"

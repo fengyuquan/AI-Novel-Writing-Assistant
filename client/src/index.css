@@ -157,10 +157,11 @@ body {
     width: 100%;
   }
 
-  .mobile-site-main .grid[class*="sm:grid-cols"],
-  .mobile-site-main .grid[class*="md:grid-cols"],
-  .mobile-site-main .grid[class*="lg:grid-cols"],
-  .mobile-site-main .grid[class*="xl:grid-cols"],
+  /* Page-owned multi-column phone layouts opt out via mobile-grid-keep. */
+  .mobile-site-main .grid[class*="sm:grid-cols"]:not(.mobile-grid-keep):not(.home-status-summary-grid):not(.auto-director-follow-up-section-grid),
+  .mobile-site-main .grid[class*="md:grid-cols"]:not(.mobile-grid-keep):not(.home-status-summary-grid):not(.auto-director-follow-up-section-grid),
+  .mobile-site-main .grid[class*="lg:grid-cols"]:not(.mobile-grid-keep):not(.home-status-summary-grid):not(.auto-director-follow-up-section-grid),
+  .mobile-site-main .grid[class*="xl:grid-cols"]:not(.mobile-grid-keep):not(.home-status-summary-grid):not(.auto-director-follow-up-section-grid),
   .mobile-page-novel-edit .grid[class*="sm:grid-cols"],
   .mobile-page-novel-edit .grid[class*="md:grid-cols"],
   .mobile-page-novel-edit .grid[class*="lg:grid-cols"],
@@ -397,229 +398,76 @@ body {
     max-width: calc(100vw - 1.5rem);
   }
 
-  .mobile-route-home {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .mobile-route-home .home-next-action-panel {
-    order: 1;
-  }
-
-  .mobile-route-home .home-status-summary-grid {
-    order: 2;
-  }
-
-  .mobile-route-home .home-dashboard-grid {
-    order: 3;
-  }
-
-  .mobile-site-main.mobile-route-home .home-status-summary-grid.grid,
-  .mobile-site-main.mobile-route-tasks .task-status-summary-grid.grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.5rem;
-  }
-
-  .mobile-route-home .home-status-summary-grid > .rounded-xl,
-  .mobile-route-tasks .task-status-summary-grid > .rounded-xl {
-    border-radius: 0.75rem;
-    box-shadow: none;
-  }
-
-  .mobile-route-home .home-status-summary-grid .p-6,
-  .mobile-route-tasks .task-status-summary-grid .p-6 {
-    padding: 0.5rem;
-  }
-
-  .mobile-route-home .home-status-summary-grid h3,
-  .mobile-route-tasks .task-status-summary-grid h3,
-  .mobile-route-tasks .task-status-summary-grid .text-2xl {
-    font-size: 1rem;
-    line-height: 1.25rem;
-  }
-
-  .mobile-site-main.mobile-route-tasks .task-filter-controls.grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .mobile-route-tasks .task-filter-header {
-    display: none;
-  }
-
-  .mobile-route-tasks .task-filter-controls.p-6 {
-    padding: 0.75rem;
-  }
-
-  .mobile-route-tasks .task-filter-controls select,
-  .mobile-route-tasks .task-filter-controls > input {
-    min-height: 2.25rem;
-    font-size: 0.8125rem;
-  }
-
-  .mobile-route-home .home-status-summary-grid p,
-  .mobile-route-tasks .task-status-summary-grid p {
-    font-size: 0.6875rem;
-    line-height: 1rem;
-  }
-
-  .mobile-route-home .home-status-summary-grid .text-xs {
-    display: none;
-  }
-
-  .mobile-route-home > .rounded-xl:nth-of-type(2) {
-    border-color: hsl(var(--primary) / 0.22);
-  }
-
-  .mobile-route-home > .rounded-xl:nth-of-type(3),
-  .mobile-route-home > .rounded-xl:nth-of-type(4),
-  .mobile-route-home > .rounded-xl:nth-of-type(5) {
-    box-shadow: none;
-  }
-
-  .mobile-route-home .flex.flex-wrap.items-center.justify-between,
-  .mobile-route-home .flex.flex-wrap.items-start.justify-between,
-  .mobile-route-home .flex.flex-wrap.items-center.gap-2,
-  .mobile-route-novels .flex.flex-wrap.items-center.justify-between,
-  .mobile-route-novels .flex.flex-wrap.gap-2,
+  /* Main-chain pages own layout via mobile-page-* / contracts; keep densify for expert routes. */
   .mobile-route-novel-create .flex.flex-wrap.gap-2 {
     align-items: stretch;
   }
 
-  .mobile-route-home .flex.flex-wrap.items-center.justify-between > *,
-  .mobile-route-home .flex.flex-wrap.items-start.justify-between > *,
-  .mobile-route-home .flex.flex-wrap.items-center.gap-2 > *,
-  .mobile-route-novels .flex.flex-wrap.items-center.justify-between > *,
-  .mobile-route-novels .flex.flex-wrap.gap-2 > *,
   .mobile-route-novel-create .flex.flex-wrap.gap-2 > * {
     flex: 1 1 100%;
   }
 
-  .mobile-route-home .flex.flex-wrap.items-center.gap-2 .inline-flex,
-  .mobile-route-novels .flex.flex-wrap.items-center.gap-2 .inline-flex {
-    flex: 0 1 auto;
-  }
-
-  .mobile-route-home .mobile-full-actions,
-  .mobile-route-novels .mobile-full-actions,
   .mobile-route-novel-create .mobile-full-actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .mobile-route-novels > .flex:first-child,
   .mobile-route-worlds > .flex:first-child,
   .mobile-route-base-characters > .flex:first-child,
   .mobile-route-style-engine > .flex:first-child,
-  .mobile-route-model-routes .flex.items-center.justify-between,
-  .mobile-route-settings .flex.items-center.justify-between {
+  .mobile-route-model-routes .flex.items-center.justify-between {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .mobile-route-novels > .flex:first-child .flex,
   .mobile-route-worlds > .flex:first-child,
   .mobile-route-base-characters > .flex:first-child .flex,
   .mobile-route-style-engine > .flex:first-child .flex {
     width: 100%;
   }
 
-  .mobile-route-novels > .grid,
-  .mobile-route-novels .grid.md\:grid-cols-2,
   .mobile-route-worlds .grid.md\:grid-cols-2,
-  .mobile-route-home .grid.md\:grid-cols-2,
   .mobile-route-base-characters .grid.md\:grid-cols-2,
   .mobile-route-base-characters .grid.lg\:grid-cols-2 {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .mobile-route-creative-hub > .grid,
   .mobile-route-drama > .grid,
   .mobile-route-chat-legacy,
-  .mobile-route-book-analysis > .grid,
-  .mobile-route-tasks > .grid,
-  .mobile-route-auto-director-follow-ups > .grid {
+  .mobile-route-book-analysis > .grid {
     grid-template-columns: minmax(0, 1fr);
     min-height: auto;
   }
 
-  .mobile-route-creative-hub > .grid {
-    height: auto;
-  }
-
   .mobile-route-chat-legacy > .rounded-xl:first-child,
   .mobile-route-drama > .grid > div:first-child,
-  .mobile-route-creative-hub > .grid > div:first-child,
-  .mobile-route-book-analysis > .grid > :first-child,
-  .mobile-route-tasks > .grid > :first-child,
-  .mobile-route-auto-director-follow-ups > .grid > :first-child {
+  .mobile-route-book-analysis > .grid > :first-child {
     order: 1;
   }
 
   .mobile-route-chat-legacy > .rounded-xl:nth-child(2),
   .mobile-route-drama > .grid > div:nth-child(2),
-  .mobile-route-creative-hub > .grid > div:nth-child(2),
-  .mobile-route-book-analysis > .grid > :nth-child(2),
-  .mobile-route-tasks > .grid > :nth-child(2),
-  .mobile-route-auto-director-follow-ups > .grid > :nth-child(2) {
+  .mobile-route-book-analysis > .grid > :nth-child(2) {
     order: 2;
   }
 
   .mobile-route-chat-legacy > :nth-child(3),
-  .mobile-route-drama > .grid > div:nth-child(3),
-  .mobile-route-creative-hub > .grid > div:nth-child(3),
-  .mobile-route-tasks > .grid > :nth-child(3) {
+  .mobile-route-drama > .grid > div:nth-child(3) {
     order: 3;
   }
 
   .mobile-route-chat-legacy > .rounded-xl,
-  .mobile-route-drama > .grid > .rounded-xl,
-  .mobile-route-tasks > .grid > .rounded-xl,
-  .mobile-route-auto-director-follow-ups > .grid > .rounded-xl {
+  .mobile-route-drama > .grid > .rounded-xl {
     box-shadow: none;
   }
 
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-overview-card > .p-6 {
-    padding: 0.75rem;
-  }
-
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-overview-card > .p-6.pt-0 {
-    padding-top: 0;
-  }
-
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid.grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-  }
-
-  .mobile-site-main.mobile-route-auto-director-follow-ups .auto-director-follow-up-filter-grid.grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid button {
-    padding: 0.5rem;
-  }
-
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid .text-sm {
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid .text-xl {
-    font-size: 1rem;
-    line-height: 1.25rem;
-  }
-
-  .mobile-route-creative-hub .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-drama .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-book-analysis .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
-  .mobile-route-tasks .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
-  .mobile-route-auto-director-follow-ups .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-knowledge .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-genres .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-story-modes .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-titles .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-model-routes .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
-  .mobile-route-settings .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-worlds .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-world-generator .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
   .mobile-route-world-workspace .rounded-xl.border.bg-card .rounded-xl.border.bg-card,
@@ -649,9 +497,6 @@ body {
   }
 
   .mobile-route-model-routes .grid.md\:grid-cols-4,
-  .mobile-route-settings .grid.md\:grid-cols-2,
-  .mobile-route-settings .grid.md\:grid-cols-3,
-  .mobile-route-settings .grid.md\:grid-cols-4,
   .mobile-route-world-generator .grid.md\:grid-cols-2,
   .mobile-route-world-generator .grid.lg\:grid-cols-2,
   .mobile-route-world-workspace .grid.md\:grid-cols-2,
@@ -683,7 +528,6 @@ body {
   }
 
   .mobile-route-model-routes .flex.items-center.justify-end,
-  .mobile-route-settings .flex.items-center.justify-end,
   .mobile-route-world-workspace .flex.items-center.justify-end,
   .mobile-route-world-generator .flex.justify-end,
   .mobile-route-knowledge .flex.justify-end,
@@ -692,7 +536,6 @@ body {
   }
 
   .mobile-route-model-routes .flex.items-center.justify-end > *,
-  .mobile-route-settings .flex.items-center.justify-end > *,
   .mobile-route-world-workspace .flex.items-center.justify-end > *,
   .mobile-route-world-generator .flex.justify-end > *,
   .mobile-route-knowledge .flex.justify-end > *,
@@ -707,7 +550,6 @@ body {
 
   .mobile-route-style-engine [role="dialog"],
   .mobile-route-model-routes [role="dialog"],
-  .mobile-route-settings [role="dialog"],
   .mobile-route-story-modes [role="dialog"],
   .mobile-route-genres [role="dialog"],
   .mobile-route-base-characters [role="dialog"] {

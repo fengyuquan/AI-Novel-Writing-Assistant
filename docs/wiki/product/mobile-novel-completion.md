@@ -25,6 +25,12 @@
 - Sheet 高度上限约 `85dvh`，底部考虑 `safe-area-inset-bottom`。
 - 主按钮触控高度不低于 44px，输入字号不低于 16px。
 
+### 布局所有权
+
+- 主链页面（首页、小说列表、开书/跟进、章节、创作中枢、设置、运行记录）用 `mobile-page-*` 与页面/契约类自管手机布局。
+- 需要手机上保留多列的网格加 `mobile-grid-keep`（或已登记的 `home-status-summary-grid` / `auto-director-follow-up-section-grid`），避免被全局「响应式列塌成一列」覆盖。
+- `index.css` 的 `.mobile-route-*` 仅保留薄壳（宽度、overflow、输入字号）与尚未迁移的专家页密化；禁止再给已迁移主链页加强制列数 / 隐藏说明文字。
+
 ### 小说工作区步骤
 
 - 手机小说壳先展示「当前步骤」与「去推荐步骤」。

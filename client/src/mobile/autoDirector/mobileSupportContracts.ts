@@ -25,10 +25,11 @@ export const AUTO_DIRECTOR_MOBILE_CLASSES = {
   followUpFilterTrigger: "h-11 rounded-md px-2 text-sm sm:h-11 sm:rounded-xl sm:px-3",
   followUpListHeader: "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
   followUpMasterDetailGrid: "grid min-w-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]",
-  followUpOverviewCard: "auto-director-follow-up-overview-card min-w-0",
+  followUpOverviewCard: "auto-director-follow-up-overview-card min-w-0 [&_.p-6]:p-3 [&_.p-6.pt-0]:pt-0",
   followUpOverviewGrid: "grid min-w-0 grid-cols-1 gap-3",
   followUpOverviewHeader: "flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between",
-  followUpOverviewSectionGrid: "auto-director-follow-up-section-grid grid grid-cols-2 gap-2 xl:grid-cols-6",
+  followUpOverviewSectionGrid:
+    "auto-director-follow-up-section-grid mobile-grid-keep grid grid-cols-2 gap-2 [&_button]:p-2 [&_.text-sm]:text-xs [&_.text-xl]:text-base xl:grid-cols-6",
   followUpPageRoot: "mobile-page-follow-ups w-full max-w-full overflow-x-hidden space-y-4",
   fullWidthAction: "w-full sm:w-auto",
   stageStickyActionBar:
