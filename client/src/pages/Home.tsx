@@ -239,7 +239,7 @@ export default function Home() {
   };
 
   return (
-    <div className="home-workbench space-y-6">
+    <div className="home-workbench mobile-page-home space-y-6 overflow-x-hidden">
       <CreationSetupNotice />
       <FirstNovelJourneyStrip />
       <HomeNextActionPanel

@@ -9,8 +9,19 @@ import type {
 } from "@ai-novel/shared/types/novel";
 import { createNovelSnapshot, previewChapterAiRevision, updateNovelChapter } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
+import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { toast } from "@/components/ui/toast";
 import { useLLMStore } from "@/store/llmStore";
+import { ClipboardList, Sparkles } from "lucide-react";
 import ChapterEditorDirectorPanel from "./ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "./ChapterEditorSidebar";
 import ChapterTextEditor from "./ChapterTextEditor";
@@ -76,6 +87,8 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   } = props;
   const llm = useLLMStore();
   const queryClient = useQueryClient();
+  const isMobileViewport = useIsMobileViewport();
+  const [assistSheet, setAssistSheet] = useState<"info" | "ai" | null>(null);
   const lastPreviewRequestRef = useRef<ReturnType<typeof buildAiRevisionRequest> | null>(null);
   const normalizedChapterContent = useMemo(() => normalizeChapterContent(chapter?.content ?? ""), [chapter?.content]);
 
@@ -401,82 +414,187 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           : "尚未选中片段";
   const canRunSelectionRevision = Boolean(getSelectionTarget());
   const headerSaveLabel = getSaveStatusLabel(saveStatus, isDirty);
-  const gridClassName = "xl:grid-cols-[320px_minmax(0,1fr)_400px]";
+  const chapterTitle = `第 ${chapter.order} 章 · ${chapter.title?.trim() || "未命名章节"}`;
+  const recommendedLabel = workspace?.recommendedTask?.title?.trim() || "按当前推荐继续改写";
+
+  const sidebar = (
+    <ChapterEditorSidebar
+      chapter={chapter}
+      workspace={workspace}
+      workspaceStatus={workspaceStatus}
+      wordCount={wordCount}
+      saveStatusLabel={headerSaveLabel}
+      isDirty={isDirty}
+      isSaving={saveMutation.isPending}
+      selectedDiagnosticId={selectedDiagnosticId}
+      onBack={onBack}
+      onOpenVersionHistory={onOpenVersionHistory}
+      onSave={() => saveMutation.mutate(contentDraft)}
+      onFocusDiagnostic={handleFocusDiagnostic}
+      onRunDiagnostic={handleRunDiagnostic}
+    />
+  );
+
+  const directorPanel = (
+    <ChapterEditorDirectorPanel
+      workspace={workspace}
+      workspaceStatus={workspaceStatus}
+      selectedDiagnosticCard={selectedDiagnosticCard}
+      session={session}
+      activeCandidate={activeCandidate}
+      revisionScope={revisionScope}
+      revisionInstruction={revisionInstruction}
+      canRunSelectionRevision={canRunSelectionRevision}
+      currentTargetDescription={currentTargetDescription}
+      isGenerating={previewMutation.isPending}
+      isApplying={acceptMutation.isPending}
+      onInstructionChange={setRevisionInstruction}
+      onScopeChange={setRevisionScope}
+      onRunRecommended={handleRunRecommended}
+      onRunSelectedDiagnostic={handleRunSelectedDiagnostic}
+      onRunFreeform={handleRunFreeform}
+      onSelectCandidate={(candidateId) => setSession((current) => ({ ...current, activeCandidateId: candidateId }))}
+      onChangeViewMode={(mode) => setSession((current) => ({ ...current, viewMode: mode }))}
+      onAccept={() => acceptMutation.mutate()}
+      onReject={handleReject}
+      onRegenerate={handleRegenerate}
+    />
+  );
+
+  const textEditor = (
+    <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+      <ChapterTextEditor
+        value={contentDraft}
+        readOnly={session.status !== "idle"}
+        onChange={(next) => {
+          setContentDraft(next);
+          setSaveStatus("idle");
+        }}
+        onSelectionChange={(nextSelection, position) => {
+          setSelection(nextSelection);
+          setSelectionToolbarPosition(position);
+          if (nextSelection) {
+            setSelectedDiagnosticId(null);
+          }
+        }}
+        preview={previewPayload}
+        focusRange={session.status === "idle"
+          ? selection
+            ? { from: selection.from, to: selection.to }
+            : selectedDiagnosticCard?.anchorRange ?? null
+          : null}
+      />
+      <SelectionAIFloatingToolbar
+        visible={Boolean(selection && session.status === "idle" && !isMobileViewport)}
+        position={selectionToolbarPosition}
+        disabled={previewMutation.isPending}
+        onRunOperation={handleRunOperation}
+      />
+    </div>
+  );
+
+  if (isMobileViewport) {
+    return (
+      <div className="mobile-page-chapter-edit flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden pb-28">
+        <header className="shrink-0 space-y-2 rounded-xl border border-border/70 bg-background p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-foreground">{chapterTitle}</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {wordCount} 字 · {headerSaveLabel}
+              </p>
+            </div>
+            {onBack ? (
+              <Button type="button" size="sm" variant="outline" className="h-10 shrink-0" onClick={onBack}>
+                返回
+              </Button>
+            ) : null}
+          </div>
+          {workspace?.recommendedTask ? (
+            <p className="text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
+              推荐：{recommendedLabel}
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-11"
+              onClick={() => setAssistSheet("info")}
+            >
+              <ClipboardList className="h-4 w-4" />
+              章节信息
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-11"
+              onClick={() => setAssistSheet("ai")}
+            >
+              <Sparkles className="h-4 w-4" />
+              AI 改写
+            </Button>
+          </div>
+          {selection ? (
+            <Button
+              type="button"
+              className="h-11 min-h-11 w-full"
+              onClick={() => setAssistSheet("ai")}
+            >
+              已选中片段，打开 AI 改写
+            </Button>
+          ) : null}
+        </header>
+
+        <div className="min-h-[55vh] min-w-0 flex-1 overflow-hidden rounded-xl border border-border/70 bg-background">
+          {textEditor}
+        </div>
+
+        <div
+          className="fixed left-3 right-3 z-40 rounded-xl border border-border/70 bg-background/95 p-2 shadow-lg backdrop-blur"
+          style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        >
+          <Button
+            type="button"
+            className="h-11 min-h-11 w-full text-base"
+            disabled={!isDirty || saveMutation.isPending}
+            onClick={() => saveMutation.mutate(contentDraft)}
+          >
+            {saveMutation.isPending ? "保存中..." : isDirty ? "保存本章" : "已是最新"}
+          </Button>
+        </div>
+
+        <Sheet open={assistSheet === "info"} onOpenChange={(open) => !open && setAssistSheet(null)}>
+          <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+            <SheetHeader>
+              <SheetTitle>章节信息</SheetTitle>
+              <SheetDescription>查看诊断、返回章节执行页，或打开版本历史。</SheetDescription>
+            </SheetHeader>
+            <SheetBody className="px-3 pb-4">{sidebar}</SheetBody>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={assistSheet === "ai"} onOpenChange={(open) => !open && setAssistSheet(null)}>
+          <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+            <SheetHeader>
+              <SheetTitle>AI 改写</SheetTitle>
+              <SheetDescription>
+                {selection ? "已选中正文片段，可直接按推荐或自定义指令改写。" : "先选中正文，或按整章 / 推荐任务继续改写。"}
+              </SheetDescription>
+            </SheetHeader>
+            <SheetBody className="px-3 pb-4">{directorPanel}</SheetBody>
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className={`grid min-h-0 flex-1 gap-4 overflow-hidden ${gridClassName}`}>
-        <ChapterEditorSidebar
-          chapter={chapter}
-          workspace={workspace}
-          workspaceStatus={workspaceStatus}
-          wordCount={wordCount}
-          saveStatusLabel={headerSaveLabel}
-          isDirty={isDirty}
-          isSaving={saveMutation.isPending}
-          selectedDiagnosticId={selectedDiagnosticId}
-          onBack={onBack}
-          onOpenVersionHistory={onOpenVersionHistory}
-          onSave={() => saveMutation.mutate(contentDraft)}
-          onFocusDiagnostic={handleFocusDiagnostic}
-          onRunDiagnostic={handleRunDiagnostic}
-        />
-
-        <div className="relative min-h-0 overflow-hidden">
-          <ChapterTextEditor
-            value={contentDraft}
-            readOnly={session.status !== "idle"}
-            onChange={(next) => {
-              setContentDraft(next);
-              setSaveStatus("idle");
-            }}
-            onSelectionChange={(nextSelection, position) => {
-              setSelection(nextSelection);
-              setSelectionToolbarPosition(position);
-              if (nextSelection) {
-                setSelectedDiagnosticId(null);
-              }
-            }}
-            preview={previewPayload}
-            focusRange={session.status === "idle"
-              ? selection
-                ? { from: selection.from, to: selection.to }
-                : selectedDiagnosticCard?.anchorRange ?? null
-              : null}
-          />
-          <SelectionAIFloatingToolbar
-            visible={Boolean(selection && session.status === "idle")}
-            position={selectionToolbarPosition}
-            disabled={previewMutation.isPending}
-            onRunOperation={handleRunOperation}
-          />
-        </div>
-
-        <div className="min-h-0 overflow-hidden">
-          <ChapterEditorDirectorPanel
-            workspace={workspace}
-            workspaceStatus={workspaceStatus}
-            selectedDiagnosticCard={selectedDiagnosticCard}
-            session={session}
-            activeCandidate={activeCandidate}
-            revisionScope={revisionScope}
-            revisionInstruction={revisionInstruction}
-            canRunSelectionRevision={canRunSelectionRevision}
-            currentTargetDescription={currentTargetDescription}
-            isGenerating={previewMutation.isPending}
-            isApplying={acceptMutation.isPending}
-            onInstructionChange={setRevisionInstruction}
-            onScopeChange={setRevisionScope}
-            onRunRecommended={handleRunRecommended}
-            onRunSelectedDiagnostic={handleRunSelectedDiagnostic}
-            onRunFreeform={handleRunFreeform}
-            onSelectCandidate={(candidateId) => setSession((current) => ({ ...current, activeCandidateId: candidateId }))}
-            onChangeViewMode={(mode) => setSession((current) => ({ ...current, viewMode: mode }))}
-            onAccept={() => acceptMutation.mutate()}
-            onReject={handleReject}
-            onRegenerate={handleRegenerate}
-          />
-        </div>
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)_400px]">
+        {sidebar}
+        {textEditor}
+        <div className="min-h-0 overflow-hidden">{directorPanel}</div>
       </div>
     </div>
   );

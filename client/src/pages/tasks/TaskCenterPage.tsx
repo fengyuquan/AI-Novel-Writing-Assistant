@@ -17,7 +17,16 @@ import {
 } from "@/api/tasks";
 import { queryKeys } from "@/api/queryKeys";
 import { Activity, ListChecks, RefreshCw, ShieldAlert } from "lucide-react";
+import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { WorkspaceHeader, WorkspaceNextAction } from "@/components/workspace";
 import { toast } from "@/components/ui/toast";
 import { resolveWorkflowContinuationFeedback } from "@/lib/novelWorkflowContinuation";
@@ -62,6 +71,7 @@ function normalizeTaskSteps(steps: unknown): UnifiedTaskStep[] {
 export default function TaskCenterPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isMobileViewport = useIsMobileViewport();
   const llm = useLLMStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [kind, setKind] = useState<TaskKind | "">("");
@@ -529,7 +539,7 @@ export default function TaskCenterPage() {
   const hasRecommendedAction = Boolean(recommendedTask || shouldOpenFailedFilter || shouldRetryRecoveryLookup);
 
   return (
-    <div className="space-y-5">
+    <div className="mobile-page-tasks space-y-5 overflow-x-hidden">
       <WorkspaceHeader
         icon={ListChecks}
         context="执行历史与恢复"
@@ -539,6 +549,7 @@ export default function TaskCenterPage() {
           <Button
             type="button"
             variant="outline"
+            className={isMobileViewport ? "h-11 w-full sm:w-auto" : undefined}
             onClick={() => void Promise.all([overviewQuery.refetch(), recoveryCandidatesQuery.refetch(), listQuery.refetch()])}
             disabled={overviewQuery.isFetching || recoveryCandidatesQuery.isFetching || listQuery.isFetching}
           >
@@ -580,13 +591,14 @@ export default function TaskCenterPage() {
                 : "只重新读取恢复候选，不会自动执行恢复。"
             : undefined}
         action={overviewErrorMessage ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => void overviewQuery.refetch()}>
+          <Button type="button" size="sm" variant="outline" className={isMobileViewport ? "h-11 w-full" : undefined} onClick={() => void overviewQuery.refetch()}>
             重新读取
           </Button>
         ) : !overviewQuery.isLoading && hasRecommendedAction ? (
           <Button
             type="button"
             size="sm"
+            className={isMobileViewport ? "h-11 w-full" : undefined}
             variant={hasMustHandleTask ? "destructive" : "outline"}
             onClick={() => {
               if (!recommendedTask) {
@@ -633,45 +645,109 @@ export default function TaskCenterPage() {
         onSortModeChange={setSortMode}
       />
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)]">
-        <TaskCenterListPanel
-          tasks={visibleRows}
-          selectedKind={selectedKind}
-          selectedId={selectedId}
-          loading={listQuery.isLoading}
-          errorMessage={listErrorMessage}
-          onRetry={() => void listQuery.refetch()}
-          onSelectTask={(task) => {
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.set("kind", task.kind);
-              next.set("id", task.id);
-              return next;
-            });
-          }}
-        />
+      {isMobileViewport ? (
+        <>
+          <TaskCenterListPanel
+            tasks={visibleRows}
+            selectedKind={selectedKind}
+            selectedId={selectedId}
+            loading={listQuery.isLoading}
+            errorMessage={listErrorMessage}
+            onRetry={() => void listQuery.refetch()}
+            onSelectTask={(task) => {
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("kind", task.kind);
+                next.set("id", task.id);
+                return next;
+              });
+            }}
+          />
+          <Sheet
+            open={Boolean(selectedKind && selectedId)}
+            onOpenChange={(open) => {
+              if (open) {
+                return;
+              }
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("kind");
+                next.delete("id");
+                return next;
+              });
+            }}
+          >
+            <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+              <SheetHeader>
+                <SheetTitle>任务详情</SheetTitle>
+                <SheetDescription>查看原因、恢复入口和可执行动作。</SheetDescription>
+              </SheetHeader>
+              <SheetBody className="px-3 pb-4">
+                <TaskCenterDetailPanel
+                  task={selectedTask}
+                  loading={Boolean(selectedKind && selectedId && detailQuery.isLoading)}
+                  errorMessage={detailErrorMessage}
+                  onRetryLoad={() => void detailQuery.refetch()}
+                  isAutoDirectorTask={isAutoDirectorTask}
+                  currentModelLabel={`${llm.provider} / ${llm.model}`}
+                  dashboardView={selectedDirectorDashboardView}
+                  runtimeProjection={selectedDirectorRuntimeProjectionForDisplay}
+                  noticeAction={noticeAction}
+                  noticeSeverity={selectedTask ? getTaskNoticeSeverity(selectedTask) : "normal"}
+                  noticeTitle={selectedTask ? getTaskNoticeTitle(selectedTask) : "任务提醒"}
+                  failureAction={failureAction}
+                  failureIsQualityReminder={selectedTaskHasQualityFailure}
+                  actions={detailActions}
+                  steps={selectedTaskSteps}
+                  milestones={selectedTask?.kind === "novel_workflow" && Array.isArray(selectedTaskMeta.milestones)
+                    ? selectedTaskMeta.milestones as NovelWorkflowMilestone[]
+                    : []}
+                />
+              </SheetBody>
+            </SheetContent>
+          </Sheet>
+        </>
+      ) : (
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)]">
+          <TaskCenterListPanel
+            tasks={visibleRows}
+            selectedKind={selectedKind}
+            selectedId={selectedId}
+            loading={listQuery.isLoading}
+            errorMessage={listErrorMessage}
+            onRetry={() => void listQuery.refetch()}
+            onSelectTask={(task) => {
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("kind", task.kind);
+                next.set("id", task.id);
+                return next;
+              });
+            }}
+          />
 
-        <TaskCenterDetailPanel
-          task={selectedTask}
-          loading={Boolean(selectedKind && selectedId && detailQuery.isLoading)}
-          errorMessage={detailErrorMessage}
-          onRetryLoad={() => void detailQuery.refetch()}
-          isAutoDirectorTask={isAutoDirectorTask}
-          currentModelLabel={`${llm.provider} / ${llm.model}`}
-          dashboardView={selectedDirectorDashboardView}
-          runtimeProjection={selectedDirectorRuntimeProjectionForDisplay}
-          noticeAction={noticeAction}
-          noticeSeverity={selectedTask ? getTaskNoticeSeverity(selectedTask) : "normal"}
-          noticeTitle={selectedTask ? getTaskNoticeTitle(selectedTask) : "任务提醒"}
-          failureAction={failureAction}
-          failureIsQualityReminder={selectedTaskHasQualityFailure}
-          actions={detailActions}
-          steps={selectedTaskSteps}
-          milestones={selectedTask?.kind === "novel_workflow" && Array.isArray(selectedTaskMeta.milestones)
-            ? selectedTaskMeta.milestones as NovelWorkflowMilestone[]
-            : []}
-        />
-      </div>
+          <TaskCenterDetailPanel
+            task={selectedTask}
+            loading={Boolean(selectedKind && selectedId && detailQuery.isLoading)}
+            errorMessage={detailErrorMessage}
+            onRetryLoad={() => void detailQuery.refetch()}
+            isAutoDirectorTask={isAutoDirectorTask}
+            currentModelLabel={`${llm.provider} / ${llm.model}`}
+            dashboardView={selectedDirectorDashboardView}
+            runtimeProjection={selectedDirectorRuntimeProjectionForDisplay}
+            noticeAction={noticeAction}
+            noticeSeverity={selectedTask ? getTaskNoticeSeverity(selectedTask) : "normal"}
+            noticeTitle={selectedTask ? getTaskNoticeTitle(selectedTask) : "任务提醒"}
+            failureAction={failureAction}
+            failureIsQualityReminder={selectedTaskHasQualityFailure}
+            actions={detailActions}
+            steps={selectedTaskSteps}
+            milestones={selectedTask?.kind === "novel_workflow" && Array.isArray(selectedTaskMeta.milestones)
+              ? selectedTaskMeta.milestones as NovelWorkflowMilestone[]
+              : []}
+          />
+        </div>
+      )}
     </div>
   );
 }

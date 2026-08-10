@@ -354,13 +354,18 @@ body {
   .mobile-page-novel-edit,
   .mobile-page-chapter-edit,
   .mobile-page-creative-hub,
-  .mobile-page-settings {
+  .mobile-page-settings,
+  .mobile-page-home,
+  .mobile-page-tasks {
     width: 100%;
     max-width: 100%;
   }
 
   .mobile-page-creative-hub,
-  .mobile-page-settings {
+  .mobile-page-settings,
+  .mobile-page-home,
+  .mobile-page-tasks,
+  .mobile-page-chapter-edit {
     overflow-x: hidden;
   }
 
