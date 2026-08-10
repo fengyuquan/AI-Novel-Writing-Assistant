@@ -292,6 +292,13 @@ body {
     overflow-y: auto;
   }
 
+  /* Bottom/side Sheets manage their own size; do not inset them like centered dialogs. */
+  [data-vaul-drawer][role="dialog"] {
+    max-width: none;
+    max-height: none;
+    overflow: hidden;
+  }
+
   [role="dialog"] .grid,
   .mobile-site-main .grid {
     max-width: 100%;

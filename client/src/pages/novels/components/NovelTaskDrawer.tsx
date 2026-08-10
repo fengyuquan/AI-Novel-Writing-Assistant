@@ -720,15 +720,15 @@ export default function NovelTaskDrawer({
   if (isMobileViewport) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
-          <SheetHeader className="border-b border-border/70">
+        <SheetContent side="bottom" className="flex w-full max-w-none max-h-[85dvh] flex-col gap-0 p-0">
+          <SheetHeader className="shrink-0 border-b border-border/70">
             <SheetTitle>执行详情</SheetTitle>
             <SheetDescription>
               先看当前下一步，再处理推进记录和排查信息。
             </SheetDescription>
           </SheetHeader>
-          <SheetBody className="px-4 py-4">{drawerBody}</SheetBody>
-          <SheetFooter className="space-y-2">{footerActions}</SheetFooter>
+          <SheetBody className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{drawerBody}</SheetBody>
+          <SheetFooter className="shrink-0 space-y-2">{footerActions}</SheetFooter>
         </SheetContent>
       </Sheet>
     );
