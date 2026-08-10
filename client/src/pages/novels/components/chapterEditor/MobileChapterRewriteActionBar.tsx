@@ -39,7 +39,7 @@ export default function MobileChapterRewriteActionBar(props: MobileChapterRewrit
   if (session.status === "loading") {
     return (
       <div
-        className="fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg"
+        className="mobile-chapter-editor-float fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg"
         style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <div className="text-sm font-medium text-foreground">AI 正在生成候选版本</div>
@@ -56,7 +56,7 @@ export default function MobileChapterRewriteActionBar(props: MobileChapterRewrit
   if (session.status === "error") {
     return (
       <div
-        className="fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-rose-200 bg-background/95 p-3 shadow-lg"
+        className="mobile-chapter-editor-float fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-rose-200 bg-background/95 p-3 shadow-lg"
         style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <div className="text-sm font-medium text-rose-900">改写失败</div>
@@ -79,7 +79,7 @@ export default function MobileChapterRewriteActionBar(props: MobileChapterRewrit
     const candidates = session.candidates ?? [];
     return (
       <div
-        className="fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-primary/25 bg-background/95 p-3 shadow-lg"
+        className="mobile-chapter-editor-float fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-primary/25 bg-background/95 p-3 shadow-lg"
         style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
         data-chapter-rewrite-decision="true"
       >
@@ -143,7 +143,7 @@ export default function MobileChapterRewriteActionBar(props: MobileChapterRewrit
   if (hasSelection) {
     return (
       <div
-        className="fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg"
+        className="mobile-chapter-editor-float fixed left-3 right-3 z-40 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg"
         style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
       >
         <div className="text-sm font-medium text-foreground">已选中片段，可直接改写</div>

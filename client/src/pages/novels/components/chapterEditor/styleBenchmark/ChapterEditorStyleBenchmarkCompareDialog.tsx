@@ -266,6 +266,17 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
     // eslint-disable-next-line react-hooks/exhaustive-deps -- locate-only scroll
   }, [locateToken]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const className = "style-benchmark-compare-open";
+    document.body.classList.add(className);
+    return () => {
+      document.body.classList.remove(className);
+    };
+  }, [open]);
+
   const locateUserEvidence = (evidence: string) => {
     const index = findParagraphIndexByEvidence(userParagraphs, evidence);
     if (index < 0) {
@@ -333,9 +344,10 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
         ref={dialogSurfaceRef}
         role="dialog"
         aria-modal="true"
-        data-compare-desk={shellFullscreen ? "fullscreen" : undefined}
+        data-compare-desk={shellFullscreen ? "fullscreen" : "windowed"}
+        overlayClassName="z-[110] bg-background/80"
         className={cn(
-          "flex flex-col gap-0 overflow-hidden p-0",
+          "z-[110] flex flex-col gap-0 overflow-hidden bg-background p-0",
           shellFullscreen
             ? "!inset-0 !left-0 !top-0 !h-[100dvh] !max-h-[100dvh] !w-screen !max-w-none !translate-x-0 !translate-y-0 !rounded-none !border-0 !p-0"
             : "h-[min(92dvh,920px)] w-[calc(100vw-1.5rem)] max-w-[min(96vw,1440px)]",

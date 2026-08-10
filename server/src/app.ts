@@ -86,7 +86,9 @@ function parseEnvFlag(value: string | undefined, defaultValue: boolean): boolean
 export function createApp() {
   getSharedNovelServices();
   const app = express();
-  const jsonBodyLimit = process.env.API_JSON_LIMIT ?? "20mb";
+  // Knowledge-base text uploads post full .txt content as JSON; keep a high ceiling
+  // so whole novels are not rejected by a product size cap. Override with API_JSON_LIMIT if needed.
+  const jsonBodyLimit = process.env.API_JSON_LIMIT ?? "200mb";
   const corsOriginEnv = process.env.CORS_ORIGIN;
   const corsAllowList = corsOriginEnv
     ? corsOriginEnv

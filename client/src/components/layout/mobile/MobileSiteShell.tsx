@@ -63,8 +63,8 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
   };
 
   return (
-    <div className={cn("min-h-dvh bg-muted/20 text-foreground", moreOpen && "overflow-hidden")}>
-      <header className="sticky top-0 z-40 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82">
+    <div className={cn("mobile-site-shell min-h-dvh bg-muted/20 text-foreground", moreOpen && "overflow-hidden")}>
+      <header className="mobile-site-header sticky top-0 z-40 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-1.5">
             <Link to="/" className="flex min-w-0 items-center gap-2" onClick={() => setMoreOpen(false)}>

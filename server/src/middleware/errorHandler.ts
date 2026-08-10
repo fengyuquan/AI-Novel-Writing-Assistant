@@ -212,10 +212,10 @@ export function errorHandler(
     && "type" in error
     && (error as { type?: string }).type === "entity.too.large"
   ) {
-    setRequestErrorMessage(res, "请求体过大，请缩短文本或分段上传。");
+    setRequestErrorMessage(res, "请求体过大，请检查网关或 API_JSON_LIMIT 配置后重试。");
     res.status(413).json({
       success: false,
-      error: "请求体过大，请缩短文本或分段上传。",
+      error: "请求体过大，请检查网关或 API_JSON_LIMIT 配置后重试。",
     });
     return;
   }

@@ -630,10 +630,13 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     const recommendedLabel = workspace?.recommendedTask?.title?.trim() || "按当前推荐继续改写";
     const workspaceNovelTitle = novelTitle?.trim() || "当前小说";
     const showRewriteActionBar = session.status !== "idle" || Boolean(selection);
-    const bottomPadClassName = showRewriteActionBar ? "pb-44" : "pb-28";
+    const showSaveFloat = !showRewriteActionBar && (isDirty || saveMutation.isPending);
+    const bottomPadClassName = showRewriteActionBar ? "pb-44" : showSaveFloat ? "pb-28" : "pb-6";
     const scrollEdgeBottomClassName = showRewriteActionBar
       ? "bottom-[calc(9.5rem+env(safe-area-inset-bottom))]"
-      : "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]";
+      : showSaveFloat
+        ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))]"
+        : "bottom-[calc(1.25rem+env(safe-area-inset-bottom))]";
 
     const sidebar = (
       <ChapterEditorSidebar
@@ -823,9 +826,9 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
             onRegenerate={handleRegenerate}
             onOpenDetails={() => setAssistSheet("ai")}
           />
-        ) : (
+        ) : isDirty || saveMutation.isPending ? (
           <div
-            className="fixed left-3 right-3 z-40 rounded-xl border border-border/70 bg-background/95 p-2 shadow-lg"
+            className="mobile-chapter-editor-save-float fixed left-3 right-3 z-40 rounded-xl border border-border/70 bg-background/95 p-2 shadow-lg"
             style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
           >
             <Button
@@ -834,10 +837,10 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
               disabled={!isDirty || saveMutation.isPending}
               onClick={() => saveMutation.mutate(contentDraft)}
             >
-              {saveMutation.isPending ? "保存中..." : isDirty ? "保存本章" : "已是最新"}
+              {saveMutation.isPending ? "保存中..." : "保存本章"}
             </Button>
           </div>
-        )}
+        ) : null}
 
         <MobileScrollEdgeButtons bottomOffsetClassName={scrollEdgeBottomClassName} />
 

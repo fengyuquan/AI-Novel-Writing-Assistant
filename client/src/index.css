@@ -306,6 +306,35 @@ body {
     transform: none !important;
     border-radius: 0 !important;
     overflow: hidden !important;
+    z-index: 110 !important;
+  }
+
+  [role="dialog"][data-compare-desk="windowed"] {
+    z-index: 110 !important;
+  }
+
+  /* 对照打开时压住背后抽屉、底部导航与其它页面浮层，避免串页内容露出来。 */
+  body.style-benchmark-compare-open [data-vaul-drawer],
+  body.style-benchmark-compare-open [data-vaul-overlay] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  body.style-benchmark-compare-open .mobile-chapter-editor-save-float,
+  body.style-benchmark-compare-open .mobile-chapter-editor-float,
+  body.style-benchmark-compare-open .mobile-floating-save-button,
+  body.style-benchmark-compare-open [aria-label="页面滚动快捷入口"],
+  body.style-benchmark-compare-open [aria-label="查看 AI 创作实况（可拖动位置）"],
+  body.style-benchmark-compare-open [aria-label="查看 AI 创作实况"],
+  body.style-benchmark-compare-open [data-find-replace-panel="true"] {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  body.style-benchmark-compare-open .mobile-site-shell > nav,
+  body.style-benchmark-compare-open .mobile-site-header {
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
 
   /* Bottom/side Sheets manage width themselves; keep component max-height so bodies can scroll. */
