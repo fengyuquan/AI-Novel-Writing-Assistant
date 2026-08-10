@@ -205,3 +205,107 @@ export function NovelContinueCard(props: {
     </Card>
   );
 }
+
+export function NovelShelfListRow(props: {
+  novel: NovelListItem;
+  onManageCover: (novelId: string) => void;
+  onDownload: (input: { novelId: string; novelTitle: string }) => void;
+  onDelete: (novelId: string, title: string) => void;
+}) {
+  const { novel } = props;
+  const action = getPrimaryAction(novel);
+  const progress = getProgress(novel);
+  const coverUrl = novel.primaryCover?.url ? resolveImageAssetUrl(novel.primaryCover.url) : null;
+  const coverStatus = novel.coverGeneration?.status && novel.coverGeneration.status !== "succeeded"
+    ? novel.coverGeneration.status
+    : null;
+
+  return (
+    <Card className="rounded-lg border-border/70 bg-background">
+      <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
+        <Link
+          to={getPreviewHref(novel)}
+          className="relative h-[108px] w-[72px] shrink-0 overflow-hidden rounded bg-muted"
+          aria-label={`预览《${novel.title}》`}
+        >
+          {coverUrl ? (
+            <img src={coverUrl} alt={`${novel.title}封面`} className="h-full w-full object-cover" loading="lazy" />
+          ) : (
+            <div className="flex h-full items-center justify-center bg-muted/70 px-2 text-center text-[11px] font-medium leading-4 text-foreground">
+              {novel.title}
+            </div>
+          )}
+          {coverStatus ? (
+            <span className="absolute left-1 top-1 rounded bg-black/65 px-1.5 py-0.5 text-[10px] text-white">
+              {coverStatusLabel(coverStatus)}
+            </span>
+          ) : null}
+        </Link>
+
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <Link to={action.href} className="line-clamp-1 text-base font-semibold hover:text-primary">
+                {novel.title}
+              </Link>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <span>{getFormLabel(novel)}</span>
+                {novel.writingPlatform ? <span>{novel.writingPlatform}</span> : null}
+                <span>{novel.status === "published" ? "已发布" : "草稿"}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                  {formatDate(novel.updatedAt)}
+                </span>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground">{progress > 0 ? `进度 ${progress}%` : "尚未开始正文"}</div>
+          </div>
+          <p className="line-clamp-2 text-sm leading-5 text-muted-foreground">
+            {novel.description || "还没有简介，打开作品继续完善。"}
+          </p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button asChild size="sm" className="h-8">
+              <Link to={action.href}>
+                <BookOpen className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                {action.label}
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              onClick={() => props.onManageCover(novel.id)}
+            >
+              <ImagePlus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              封面
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8"
+              onClick={() => props.onDownload({ novelId: novel.id, novelTitle: novel.title })}
+            >
+              <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              导出
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 text-muted-foreground hover:text-destructive"
+              onClick={() => props.onDelete(novel.id, novel.title)}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              删除
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

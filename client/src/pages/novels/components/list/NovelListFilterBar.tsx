@@ -16,6 +16,8 @@ export function NovelListFilterBar(props: {
   onNarrativeFormChange?: (value: "all" | "short_story" | "long_novel") => void;
   sort?: "updated" | "created" | "progress";
   onSortChange?: (value: "updated" | "created" | "progress") => void;
+  arrange?: "grid" | "list";
+  onArrangeChange?: (value: "grid" | "list") => void;
 }) {
   const isShelf = props.view === "shelf";
   if (isShelf) {
@@ -44,6 +46,15 @@ export function NovelListFilterBar(props: {
               <SelectItem value="updated">最近编辑</SelectItem>
               <SelectItem value="created">最近创建</SelectItem>
               <SelectItem value="progress">完成度</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : null}
+        {props.onArrangeChange ? (
+          <Select value={props.arrange ?? "grid"} onValueChange={(value) => props.onArrangeChange?.(value as "grid" | "list")}>
+            <SelectTrigger className="h-10 w-[132px] rounded-lg shadow-none"><SelectValue placeholder="排列" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="grid">封面网格</SelectItem>
+              <SelectItem value="list">紧凑列表</SelectItem>
             </SelectContent>
           </Select>
         ) : null}

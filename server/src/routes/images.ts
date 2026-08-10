@@ -248,6 +248,31 @@ router.get("/assets", validate({ query: assetQuerySchema }), async (req, res, ne
   }
 });
 
+const uploadAssetQuerySchema = z.object({
+  sceneType: z.literal("novel_cover"),
+  sceneId: z.string().trim().min(1),
+});
+
+router.post("/assets/upload", validate({ query: uploadAssetQuerySchema }), async (req, res, next) => {
+  try {
+    const query = req.query as z.infer<typeof uploadAssetQuerySchema>;
+    const mimeType = String(req.headers["content-type"] ?? "image/png").split(";")[0]?.trim() || "image/png";
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const buffer = Buffer.concat(chunks);
+    const data = await imageGenerationService.uploadNovelCover(query.sceneId, buffer, mimeType);
+    res.status(201).json({
+      success: true,
+      data,
+      message: "Cover uploaded.",
+    } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/assets/:assetId/file", validate({ params: assetParamsSchema }), async (req, res, next) => {
   try {
     const { assetId } = req.params as z.infer<typeof assetParamsSchema>;

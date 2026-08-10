@@ -58,7 +58,7 @@ export function NovelListHeader(props: {
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               {props.view === "shelf"
-                ? "浏览你的作品，打开封面，继续阅读或继续创作。"
+                ? "浏览你的作品：可选封面网格或紧凑列表，也可上传/生成封面后继续创作。"
                 : "管理正在推进的小说项目，快速判断哪些可以继续写、哪些需要先处理状态。"}
             </p>
           </div>

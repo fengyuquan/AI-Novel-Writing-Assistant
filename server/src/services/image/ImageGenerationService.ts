@@ -18,6 +18,7 @@ import {
 import { isImageProviderSupported, resolveImageModel } from "./provider";
 import {
   persistGeneratedImageAsset,
+  persistUploadedImageBuffer,
   removeStoredImageAssetFile,
   resolveImageAssetFile,
 } from "./imageAssetStorage";
@@ -405,6 +406,92 @@ export class ImageGenerationService {
       orderBy: [{ isPrimary: "desc" }, { createdAt: "desc" }],
     });
     return assets.map((item) => toImageAsset(item));
+  }
+
+  async uploadNovelCover(novelId: string, buffer: Buffer, mimeType: string): Promise<ImageAsset> {
+    const novel = await prisma.novel.findUnique({
+      where: { id: novelId },
+      select: { id: true },
+    });
+    if (!novel) {
+      throw new AppError("小说不存在。", 404);
+    }
+
+    const now = new Date();
+    const task = await prisma.imageGenerationTask.create({
+      data: {
+        sceneType: "novel_cover",
+        novelId,
+        provider: "upload",
+        model: "user-upload",
+        prompt: "用户上传封面",
+        size: DEFAULT_NOVEL_COVER_IMAGE_SIZE,
+        imageCount: 1,
+        status: "succeeded",
+        progress: 1,
+        startedAt: now,
+        finishedAt: now,
+        currentStage: "uploaded",
+      },
+    });
+
+    try {
+      const persisted = await persistUploadedImageBuffer({
+        taskId: task.id,
+        sceneType: "novel_cover",
+        novelId,
+        sortOrder: 0,
+        buffer,
+        mimeType,
+      });
+
+      const ownerWhere = {
+        sceneType: "novel_cover" as const,
+        novelId,
+      };
+      const asset = await prisma.$transaction(async (tx) => {
+        const hasPrimary = await tx.imageAsset.findFirst({
+          where: {
+            ...ownerWhere,
+            isPrimary: true,
+          },
+          select: { id: true },
+        });
+        return tx.imageAsset.create({
+          data: {
+            taskId: task.id,
+            sceneType: "novel_cover",
+            novelId,
+            provider: "upload",
+            model: "user-upload",
+            url: persisted.persistedUrl,
+            mimeType: persisted.mimeType,
+            prompt: "用户上传封面",
+            isPrimary: !hasPrimary,
+            sortOrder: 0,
+            metadata: JSON.stringify({
+              origin: "uploaded",
+              localPath: persisted.localPath,
+              relativePath: persisted.relativePath,
+              storageKey: persisted.storageKey,
+              storageDriver: persisted.storageDriver,
+            }),
+          },
+        });
+      });
+
+      return toImageAsset(asset);
+    } catch (error) {
+      await prisma.imageGenerationTask.update({
+        where: { id: task.id },
+        data: {
+          status: "failed",
+          error: error instanceof Error ? error.message.slice(0, 1000) : "封面上传失败。",
+          finishedAt: new Date(),
+        },
+      }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async setPrimaryAsset(assetId: string): Promise<ImageAsset> {

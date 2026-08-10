@@ -57,13 +57,13 @@ export function NovelCoverCard(props: NovelCoverCardProps) {
       <section className="space-y-4 border-t border-border/60 pt-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
-            <div className="text-sm font-semibold text-foreground">小说封面主画面</div>
+            <div className="text-sm font-semibold text-foreground">小说封面</div>
             <div className="text-sm leading-6 text-muted-foreground">
-              先生成这本书的封面主画面。当前阶段不直接生成可用书名字体，后续仍可继续排版成正式封面。
+              可上传已有封面，或让 AI 生成封面主画面；主封面会显示在书架上。
             </div>
           </div>
           <Button type="button" variant="outline" className="shrink-0" onClick={() => setOpen(true)}>
-            {assets.length > 0 ? "管理封面图库" : "生成封面主画面"}
+            {assets.length > 0 ? "管理封面" : "上传或生成封面"}
           </Button>
         </div>
 
@@ -75,7 +75,7 @@ export function NovelCoverCard(props: NovelCoverCardProps) {
 
         {!assetsQuery.isLoading && !primaryAsset ? (
           <div className="py-5 text-sm leading-6 text-muted-foreground">
-            还没有封面主画面。点击上方按钮，系统会先根据当前小说信息整理一版封面输入草稿。
+            还没有封面。点击上方按钮，可上传图片或让 AI 先整理一版封面输入草稿。
           </div>
         ) : null}
 

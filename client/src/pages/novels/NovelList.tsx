@@ -31,7 +31,7 @@ import { NovelListHeader } from "./components/list/NovelListHeader";
 import { NovelListPagination } from "./components/list/NovelListPagination";
 import { NovelListSkeleton } from "./components/list/NovelListSkeleton";
 import { NovelProjectCard } from "./components/list/NovelProjectCard";
-import { NovelContinueCard, NovelShelfCard } from "./components/list/NovelShelfCard";
+import { NovelContinueCard, NovelShelfCard, NovelShelfListRow } from "./components/list/NovelShelfCard";
 import { NovelCoverDialog } from "./components/cover/NovelCoverDialog";
 import { createDefaultNovelBasicFormState, type NovelBasicFormState } from "./novelBasicInfo.shared";
 import {
@@ -62,6 +62,8 @@ export default function NovelList() {
     ? searchParams.get("view") as "shelf" | "workbench"
     : storedView === "workbench" ? "workbench" : "shelf";
   const [view, setView] = useState<"shelf" | "workbench">(initialView);
+  const storedArrange = typeof window !== "undefined" ? window.localStorage.getItem("novel-shelf-arrange") : null;
+  const [arrange, setArrange] = useState<"grid" | "list">(storedArrange === "list" ? "list" : "grid");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [writingMode, setWritingMode] = useState<WritingModeFilter>("all");
   const [narrativeForm, setNarrativeForm] = useState<"all" | "short_story" | "long_novel">("all");
@@ -225,6 +227,11 @@ export default function NovelList() {
     }, { replace: true });
   };
 
+  const handleArrangeChange = (nextArrange: "grid" | "list") => {
+    setArrange(nextArrange);
+    window.localStorage.setItem("novel-shelf-arrange", nextArrange);
+  };
+
   const coverNovel = coverNovelId ? allNovels.find((item) => item.id === coverNovelId) ?? null : null;
   const continueNovels = useMemo(
     () => novels.filter((novel) => {
@@ -304,6 +311,8 @@ export default function NovelList() {
         onNarrativeFormChange={setNarrativeForm}
         sort={sort}
         onSortChange={setSort}
+        arrange={arrange}
+        onArrangeChange={handleArrangeChange}
       />
 
       {novelListQuery.isPending ? (
@@ -336,11 +345,25 @@ export default function NovelList() {
               ) : null}
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold">我的作品</h2>
-                <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(210px,1fr))]">
-                  {novels.filter((novel) => !continueNovels.some((item) => item.id === novel.id)).map((novel) => (
-                    <NovelShelfCard key={novel.id} novel={novel} onManageCover={setCoverNovelId} onDownload={downloadNovelMutation.mutate} onDelete={handleDelete} />
-                  ))}
-                </div>
+                {arrange === "list" ? (
+                  <div className="grid w-full grid-cols-1 gap-3">
+                    {novels.filter((novel) => !continueNovels.some((item) => item.id === novel.id)).map((novel) => (
+                      <NovelShelfListRow
+                        key={novel.id}
+                        novel={novel}
+                        onManageCover={setCoverNovelId}
+                        onDownload={downloadNovelMutation.mutate}
+                        onDelete={handleDelete}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(210px,1fr))]">
+                    {novels.filter((novel) => !continueNovels.some((item) => item.id === novel.id)).map((novel) => (
+                      <NovelShelfCard key={novel.id} novel={novel} onManageCover={setCoverNovelId} onDownload={downloadNovelMutation.mutate} onDelete={handleDelete} />
+                    ))}
+                  </div>
+                )}
               </section>
             </div>
           ) : (

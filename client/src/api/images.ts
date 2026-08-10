@@ -140,6 +140,19 @@ export async function listImageAssets(params: { sceneType: Extract<ImageSceneTyp
   return data;
 }
 
+export async function uploadNovelCover(novelId: string, file: File) {
+  const { data } = await apiClient.post<ApiResponse<ImageAsset>>("/images/assets/upload", file, {
+    params: {
+      sceneType: "novel_cover",
+      sceneId: novelId,
+    },
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+  });
+  return data;
+}
+
 export async function setPrimaryImageAsset(assetId: string) {
   const { data } = await apiClient.post<ApiResponse<ImageAsset>>(`/images/assets/${assetId}/set-primary`);
   return data;

@@ -20,8 +20,9 @@ Prompt 也不走 service 内联字符串，而是进入 Prompt Registry：先把
 - 当前 V1 只在 schema 与 route/service 校验层 enforce 归属规则，不引入复杂 polymorphic DB check。
 - 小说主表不新增 `coverImageAssetId` 之类字段。当前封面通过 `sceneType=novel_cover + novelId + isPrimary` 从图片域读取。
 - 封面图库、主图切换、删除主图后自动补新主图的规则，都由图片域负责。
+- 用户可上传本地封面图（PNG / JPEG / WebP / GIF，≤20MB）进入同一图库；无主封面时自动设为主图。上传会创建一条 `provider=upload` 的已完成任务，以满足 `ImageAsset.taskId` 归属，不走 AI 生成链。
 - 小说编辑页只负责组装只读封面草稿素材：书名、简介、目标读者、卖点、竞品气质、前 30 章承诺、商业标签、题材/推进模式、世界氛围、写法气质。
-- 默认新手路径固定为“AI 先整理再可编辑”：先生成 source brief，再允许 AI 优化，再允许手动改最终 prompt。
+- 默认新手路径固定为“AI 先整理再可编辑”：先生成 source brief，再允许 AI 优化，再允许手动改最终 prompt；同时保留“直接上传封面”作为低门槛入口。
 - V1 只生成不带文字的封面主画面，不承诺直接生成可用的中文书名字体。
 
 ## Prompt Chain

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_NOVEL_COVER_NEGATIVE_PROMPT, DEFAULT_NOVEL_COVER_STYLE_PRESET, buildNovelCoverImagePrompt } from "@ai-novel/shared/imagePrompt";
 import {
   DEFAULT_NOVEL_COVER_IMAGE_COUNT,
@@ -16,14 +16,17 @@ import {
   optimizeNovelCoverPrompt,
   resolveImageAssetUrl,
   setPrimaryImageAsset,
+  uploadNovelCover,
   type GenerateNovelCoverPayload,
   type ImagePromptOutputLanguage,
   type NovelCoverPromptMode,
 } from "@/api/images";
 import { queryKeys } from "@/api/queryKeys";
 import { getAPIKeySettings } from "@/api/settings";
+import SelectControl from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toast";
 import type { StoryWorldSliceView } from "@ai-novel/shared/types/storyWorldSlice";
 import type { NovelBasicFormState } from "../../novelBasicInfo.shared";
 import {
@@ -31,7 +34,6 @@ import {
   buildNovelCoverDraftSourcePrompt,
   type BuildNovelCoverDraftInput,
 } from "./novelCoverDraft";
-import SelectControl from "@/components/common/SelectControl";
 
 const IMAGE_STATUS_TEXT: Record<string, string> = {
   queued: "排队中",
@@ -79,6 +81,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function NovelCoverDialog(props: NovelCoverDialogProps) {
   const queryClient = useQueryClient();
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [sourcePrompt, setSourcePrompt] = useState("");
   const [promptMode, setPromptMode] = useState<NovelCoverPromptMode>("novel_cover_chain");
@@ -306,6 +309,17 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
     },
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadNovelCover(props.novelId, file),
+    onSuccess: async () => {
+      toast.success("封面已上传，可在图库里设为主封面。");
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.images.assets("novel_cover", props.novelId),
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.novels.all });
+    },
+  });
+
   const activeTask = activeTaskQuery.data?.data;
 
   const handleDeleteAsset = async (asset: ImageAsset) => {
@@ -314,6 +328,28 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
       return;
     }
     await deleteAssetMutation.mutateAsync(asset.id);
+  };
+
+  const handleUploadCover = async (fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) {
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件（PNG / JPEG / WebP / GIF）。");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error("封面图片不能超过 20MB。");
+      return;
+    }
+    try {
+      await uploadMutation.mutateAsync(file);
+    } finally {
+      if (uploadInputRef.current) {
+        uploadInputRef.current.value = "";
+      }
+    }
   };
 
   return (
@@ -329,7 +365,7 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
       <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0">
         <DialogHeader className="shrink-0 border-b border-slate-200 px-6 pb-4 pt-5">
           <DialogTitle className="text-[22px] font-semibold tracking-tight text-slate-900">
-            生成小说封面主画面
+            管理小说封面
             {promptContext.title ? `：${promptContext.title}` : ""}
           </DialogTitle>
         </DialogHeader>
@@ -349,6 +385,42 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
               </div>
             </section>
           ) : null}
+
+          <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">上传已有封面</div>
+                <div className="text-xs leading-5 text-slate-500">
+                  可直接上传 PNG / JPEG / WebP / GIF（不超过 20MB）。当前没有主封面时，上传后会自动设为主封面。
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleUploadCover(event.target.files);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-xl"
+                  disabled={uploadMutation.isPending}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  {uploadMutation.isPending ? "上传中..." : "上传封面"}
+                </Button>
+              </div>
+            </div>
+            {uploadMutation.isError ? (
+              <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {getErrorMessage(uploadMutation.error, "封面上传失败，请稍后重试。")}
+              </div>
+            ) : null}
+          </section>
 
           <section className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/65 p-4">
             <div className="space-y-1">
@@ -551,7 +623,7 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
               <div>
                 <div className="text-sm font-semibold text-slate-900">封面图库</div>
                 <div className="text-xs leading-5 text-slate-500">
-                  生成成功后会自动回到这里。第一张成功图会在当前没有主封面时自动设为主图。
+                  上传或生成成功后会显示在这里。第一张成功图会在当前没有主封面时自动设为主图。
                 </div>
               </div>
             </div>
@@ -564,7 +636,7 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
 
             {!assetsQuery.isLoading && assets.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-                还没有封面图。先提交一次生成任务，成功后会出现在这里。
+                还没有封面图。可以先上传一张，或继续用 AI 生成。
               </div>
             ) : null}
 

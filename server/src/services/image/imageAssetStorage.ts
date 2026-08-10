@@ -227,6 +227,79 @@ export async function persistGeneratedImageAsset(input: PersistGeneratedImageInp
   };
 }
 
+interface PersistUploadedImageInput {
+  taskId: string;
+  sceneType: "character" | "novel_cover" | "book_analysis_character";
+  baseCharacterId?: string | null;
+  novelId?: string | null;
+  bookAnalysisCharacterId?: string | null;
+  sortOrder: number;
+  buffer: Buffer;
+  mimeType: string;
+  storageRoot?: string;
+  s3Client?: Pick<S3Client, "send">;
+}
+
+export async function persistUploadedImageBuffer(input: PersistUploadedImageInput): Promise<PersistedGeneratedImage> {
+  const mimeType = input.mimeType.trim().toLowerCase() || "image/png";
+  if (!MIME_EXTENSION_MAP[mimeType]) {
+    throw new AppError("仅支持 PNG、JPEG、WebP 或 GIF 图片。", 400);
+  }
+  if (input.buffer.length === 0) {
+    throw new AppError("未收到图片数据。", 400);
+  }
+  const maxBytes = 20 * 1024 * 1024;
+  if (input.buffer.length > maxBytes) {
+    throw new AppError("封面图片不能超过 20MB。", 400);
+  }
+
+  const extension = getExtensionFromMimeType(mimeType);
+  const { localPath, relativePath } = buildStorageSegments({
+    taskId: input.taskId,
+    sceneType: input.sceneType,
+    baseCharacterId: input.baseCharacterId,
+    novelId: input.novelId,
+    bookAnalysisCharacterId: input.bookAnalysisCharacterId,
+    sortOrder: input.sortOrder,
+    url: `upload.${extension}`,
+  }, extension);
+
+  if (isS3ImageStorageEnabled()) {
+    const storageKey = normalizeStorageKey(relativePath);
+    if (!storageKey) {
+      throw new AppError("Image object storage key is invalid.", 500);
+    }
+    await putImageObject({
+      buffer: input.buffer,
+      key: storageKey,
+      mimeType,
+      s3Client: input.s3Client,
+    });
+    return {
+      persistedUrl: storageKey,
+      localPath: null,
+      relativePath,
+      storageKey,
+      storageDriver: "s3",
+      sourceUrl: null,
+      mimeType,
+    };
+  }
+
+  await fs.mkdir(path.dirname(localPath), { recursive: true });
+  await fs.writeFile(localPath, input.buffer);
+
+  return {
+    persistedUrl: localPath,
+    localPath,
+    relativePath,
+    storageKey: null,
+    storageDriver: "local",
+    sourceUrl: null,
+    mimeType,
+  };
+}
+
 export async function resolveImageAssetFile(input: ImageAssetFileInput): Promise<ResolvedImageAssetFile> {
   const metadata = parseImageAssetMetadata(input.metadata);
   if (metadata.storageDriver === "s3" || (!metadata.localPath && metadata.storageKey)) {
