@@ -364,7 +364,7 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
         <div className="text-xs text-muted-foreground">{helperText}</div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4" data-chapter-editor-scroll="true">
         <div className="relative min-h-full">
           {preview?.mode === "inline" && previewContent ? (
             <div

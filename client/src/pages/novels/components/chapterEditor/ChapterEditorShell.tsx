@@ -10,6 +10,7 @@ import type {
 import { createNovelSnapshot, previewChapterAiRevision, updateNovelChapter } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
 import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
+import MobileScrollEdgeButtons from "@/components/layout/mobile/MobileScrollEdgeButtons";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -563,6 +564,11 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
             {saveMutation.isPending ? "保存中..." : isDirty ? "保存本章" : "已是最新"}
           </Button>
         </div>
+
+        <MobileScrollEdgeButtons
+          scrollContainerSelector="[data-chapter-editor-scroll]"
+          bottomOffsetClassName="bottom-[calc(5.5rem+env(safe-area-inset-bottom))]"
+        />
 
         <Sheet open={assistSheet === "info"} onOpenChange={(open) => !open && setAssistSheet(null)}>
           <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">

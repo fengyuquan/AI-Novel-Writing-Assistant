@@ -6,9 +6,17 @@ import { cn } from "@/lib/utils";
 
 const Sheet = ({
   shouldScaleBackground = false,
+  // Prevent content-scroll from dismissing the drawer when the list hits the top.
+  handleOnly = true,
+  scrollLockTimeout = 800,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root shouldScaleBackground={shouldScaleBackground} {...props} />
+  <DrawerPrimitive.Root
+    shouldScaleBackground={shouldScaleBackground}
+    handleOnly={handleOnly}
+    scrollLockTimeout={scrollLockTimeout}
+    {...props}
+  />
 );
 Sheet.displayName = "Sheet";
 
@@ -63,7 +71,10 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {side === "bottom" || side === "top" ? (
-        <div className="mx-auto mt-3 h-1.5 w-10 shrink-0 rounded-full bg-muted" aria-hidden />
+        <DrawerPrimitive.Handle
+          className="mx-auto mt-3 h-1.5 w-10 shrink-0 rounded-full bg-muted"
+          aria-label="拖动关闭"
+        />
       ) : null}
       {children}
       {showClose ? (
@@ -118,7 +129,7 @@ const SheetDescription = React.forwardRef<
 SheetDescription.displayName = "SheetDescription";
 
 const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 pb-4", className)} {...props} />
+  <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4", className)} {...props} />
 );
 SheetBody.displayName = "SheetBody";
 
