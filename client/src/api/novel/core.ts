@@ -19,7 +19,24 @@ import type {
   ProjectProgressStatus,
   SimpleCreationShelfProjection,
 } from "@ai-novel/shared/types/novel";
+import type { OutlineCreateBootstrapDraft } from "@ai-novel/shared/types/outlineCreateBootstrap";
+import type { ParsedChapterOutline } from "@ai-novel/shared/utils/outlineImport";
 import { apiClient } from "../client";
+
+export type CreateNovelFromOutlinePreviewResult = {
+  parsed: ParsedChapterOutline;
+  bootstrap: OutlineCreateBootstrapDraft;
+  usedAiForParse: boolean;
+  warnings: string[];
+};
+
+export type CreateNovelFromOutlineResult = {
+  novel: Novel;
+  workflowTaskId: string | null;
+  createdCharacterCount: number;
+  hasWorld: boolean;
+  warnings: string[];
+};
 import {
   buildNovelExportFallbackFileName,
   extractFileName,
@@ -53,6 +70,34 @@ export async function getNovelList(params?: {
 
 export async function getNovelDetail(id: string) {
   const { data } = await apiClient.get<ApiResponse<NovelDetailResponse>>(`/novels/${id}`);
+  return data;
+}
+
+export async function previewCreateNovelFromOutline(payload: {
+  text: string;
+  mode?: "auto" | "template" | "ai";
+  provider?: LLMProvider;
+  model?: string;
+  temperature?: number;
+}) {
+  const { data } = await apiClient.post<ApiResponse<CreateNovelFromOutlinePreviewResult>>(
+    "/novels/create-from-outline/preview",
+    payload,
+  );
+  return data;
+}
+
+export async function createNovelFromOutline(payload: {
+  parsed: ParsedChapterOutline;
+  bootstrap: OutlineCreateBootstrapDraft;
+  provider?: LLMProvider;
+  model?: string;
+  temperature?: number;
+}) {
+  const { data } = await apiClient.post<ApiResponse<CreateNovelFromOutlineResult>>(
+    "/novels/create-from-outline",
+    payload,
+  );
   return data;
 }
 

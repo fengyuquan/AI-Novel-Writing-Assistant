@@ -137,6 +137,95 @@ hard 卷锁定前期承诺、卖点、推进秩序和节奏稳定性；soft 卷�
 
 UI 和导演事实摘要可以展示 `affectedBeats`、`staleBeatCount`、`lockedBeatCount`、`defaultImpactAction` 和 `advancedImpactActions`，但这些都是投影 / 决策摘要，不需要数据库迁移。只有结构级角色或全局卖点变化明显影响整卷战略时，才提示高级动作，例如重跑节奏板或卷战略。
 
+## External Chapter Outline Import
+
+节奏 / 拆章工作台支持从外部粘贴章节大纲，用于替换当前卷工作区中的章节清单，再继续用系统做细化、评价和正文生产。
+
+### Current Rule
+
+- 入口在「节奏 / 拆章」标题栏的「导入大纲」。
+- 解析默认 `auto`：先走确定性模板解析（支持 `## 第N章` 与 `**第N章：标题**` + 章节摘要/目标/任务单）；置信度不足时再调用已注册 Prompt `novel.volume.outline_import@v2`。
+- AI 整理只允许改格式/拆字段，禁止润色、概括或改写剧情原文；字段应尽量保留原文原句。
+- `POST /novels/:id/volumes/import-outline` **只返回预览结果，不写库**。用户确认后写入前端卷草稿，再点「保存卷工作区」走既有 `updateVolumes` + `syncToChapterExecution`。
+- 替换范围是整本卷工作区章节清单；**不与旧拆章做逐章合并**，解析确认后直接覆盖。保留已有卷元信息。导入文本含 `# 第N卷` 时按卷归属，否则全部写入第 1 卷，其余卷章节清空。
+- 导入只保证 `title` + `summary`（可选 `purpose` / `mustAvoid` / `taskSheet`），并标记 `conflictLevelSource=user`。不自动生成 beat sheet、sceneCards；这些仍走既有细化 / 批量补任务单。
+- 同步默认继续保护已有正文：`preserveContent: true`。导入本身不删除执行区正文章节，也**不做正文冲突检测**。
+- 写入草稿时清空当前 beatSheets / rebalanceDecisions，避免旧节奏板与新章节清单错位；用户可重新生成节奏板。
+- 大纲里的「章节任务单」只是规划笔记。同步执行区时**不得**因缺少场景卡/边界合同而硬失败；只有已存在 `sceneCards` 的完整执行合同才走质量门禁。完整合同仍靠后续章节细化 / JIT 补齐。
+
+### Setting Conflict Check
+
+写入草稿前，前端会调用 `POST /novels/:id/volumes/import-outline/conflicts`（Prompt `novel.volume.outline_import_conflict@v1`），用 AI 语义对照：
+
+- 要比：角色硬事实、世界观/书级世界规则、卷战略、节奏板。
+- 不比：已写正文、旧拆章逐章差异。
+
+每条冲突由用户三选一（建议值可改，不强制）：
+
+| 选择 | 拆章 | 设定资产 |
+|---|---|---|
+| 跟大纲 | 保留导入章节原文 | 不改库内设定；记「设定待对齐」供后续手动改角色/世界/战略 |
+| 跟设定 | 仍覆盖拆章；相关章节 `mustAvoid` 追加合规备注，不擅自改写摘要剧情 | 保持原设定不变 |
+| 稍后处理 | 覆盖拆章 | 设定不变；冲突进入页面可见待处理列表，不阻断保存 |
+
+新手默认推荐：角色/世界硬规则偏 `keep_setting`；卷战略/节奏与刚导入大纲冲突偏 `keep_outline`。冲突分析接口本身不写库。
+
+### Failure Modes
+
+- 自由文本没有章节标题：模板置信度低，应走 AI 整理；若 AI 仍无章节则报错，不写入草稿。
+- 用户只解析预览却忘记保存：执行区不会变化，页面应继续显示「含未保存草稿」。
+- 把导入误当成生产就绪：缺少 task sheet / scene cards 时仍需细化后才能稳定进入正文生产门禁。
+- 冲突分析失败：应提示重试；不要用关键词表本地“猜冲突”掩盖 AI 失败。
+- 「跟大纲」被误当成自动改设定：当前只记账待对齐，不会静默改角色卡或世界库。
+
+## Create Novel From Outline
+
+新手可带着完整章节大纲直接开新书，不必先手填空小说再导入。
+
+### Background
+
+已有书上的「导入大纲」依赖 `novelId`，且冲突检查面向既有设定。开新书路径没有可对照设定，需要把解析、开书草稿抽取与落库编排成一条独立流程。
+
+### Decision
+
+- 入口：`/novels/create-from-outline`（小说列表、空状态、手动创建页均可进入）。
+- 两段式 API：
+  - `POST /novels/create-from-outline/preview`：无 `novelId` 解析章节 + Prompt `novel.create.from_outline_bootstrap@v2` 抽出书名/简介/framing/角色/世界观文稿；**不写库**。
+  - `POST /novels/create-from-outline`：用户确认后 `createNovel` → 合并拆章并写入卷战略/节奏板 → `syncToChapterExecution` → 灌入故事宏观规划与书级合约 → 创建勾选角色 → 世界文稿走 `world.import.extract` 再绑定本书；`manual_create` workflow 附上 `novelId`。
+  - 若执行区连接失败但卷工作区已落库，开书接口仍应成功返回，并把连接失败写入 `warnings`；用户可到节奏页再同步。不要因为大纲任务单笔记让整次开书失败。
+- **不做**设定冲突三选一（新书无设定）；不自动进入自动导演。
+- 章节清单仍以解析结果为准；bootstrap Prompt 只抽取设定，禁止改写章节剧情原文。
+- 开书草稿抽取采用 **AI 结构化输出 + 大纲前序确定性线索补全**：`extractOutlineBootstrapHints` 从已标注的书名/世界观/前30章/主角名段落抬升线索，注入 Prompt，并在 AI 字段为空时回填，避免富大纲仍出现空白书名/世界/角色。
+- 开书落库必须同时灌入下游可消费的规划层，避免新手进入编辑页后宏观规划 0%、卷战略空白、节奏板无章节分组：
+  - `buildOutlineStrategyAndBeatSheets`：卷骨架字段 + `strategyPlan` + `beatSheets`，并给章节挂上 `beatKey`（优先按 `第N阶段` 分组）。
+  - `OutlineCreatePlanningHydrationService`：用大纲拼装 `storyInput` 调用既有 `StoryMacroPlanService.decompose`，并写入 `BookContract`。
+  - 工作区合并时，若请求显式带了 `beatSheets` / `rebalanceDecisions`，不得因卷结构变更而静默清空。
+
+### Current Rule
+
+- 解析复用 `OutlineImportService.parseOutlineText`（模板 / auto / AI），不再强制先有小说。
+- 长线「第N卷」规划标题若下面没有具体章节体，解析后丢弃这些空卷，只保留真正落了章节的卷，避免预览出现一排空卷。
+- `### 第N阶段` 标题记入章节 `stageLabel`，供节奏板分组；不是卷标题。
+- 角色/世界/宏观规划失败不回滚小说与拆章，以 `warnings` 返回，引导用户到对应页补齐。
+- 成功后进入编辑页 `stage=structured`，并同步章节壳到执行区；此时不要求每章已有完整执行合同。
+- 大纲任务单可写入 `taskSheet`，但不会因此触发「执行合同质量门禁」阻断开书。
+- 开书核对页应展示章节摘要 / 目标 / 任务单，避免用户误以为字段未导入。
+- `Chapter.expectation` 只对应规划侧「章节目标 / purpose」；hydrate 不得用它覆盖「章节摘要 / summary」。从大纲开书后若摘要被冲成目标文案，属于边界回归，见 `docs/wiki/architecture/chapter-identity-and-planning-boundary.md`。
+
+### Failure Modes
+
+- 0 章大纲：preview/create 均阻断。
+- bootstrap AI 失败：提示重试；禁止关键词表本地猜角色/世界。
+- 世界抽取或绑定失败：书与拆章保留，warning 说明可稍后补。
+- 误把大纲任务单当完整执行合同：同步不应报「执行合同未通过质量门禁」；用户应继续到节奏页做章节细化后再开写。
+
+### Related Modules
+
+- `server/src/services/novel/volume/OutlineCreateBootstrapService.ts`
+- `server/src/prompting/prompts/novel/create/fromOutlineBootstrap.prompts.ts`
+- `shared/types/outlineCreateBootstrap.ts`
+- `client/src/pages/novels/NovelCreateFromOutline.tsx`
+
 ## Downstream Gap
 
 卷规划的价值最终要进入章节执行。当前已存在 `VolumeWindowContext.keyMilestoneGuards` 字段，但卷规划服务尚未完整填充它。这个缺口会导致章节生成仍可能提前兑现后续里程碑或重复卷级高潮。
@@ -156,4 +245,13 @@ UI 和导演事实摘要可以展示 `affectedBeats`、`staleBeatCount`、`locke
 - `server/src/prompting/prompts/novel/volume/strategy.prompts.ts`：卷战略 PromptAsset。
 - `server/src/prompting/prompts/novel/volume/skeleton.prompts.ts`：卷骨架 PromptAsset。
 - `server/src/prompting/prompts/novel/volume/beatSheet.prompts.ts`：节奏板 PromptAsset（固定槽位 + 动态短标题）。
+- `shared/utils/outlineImport.ts`：外部大纲 Markdown 解析与卷章节合并。
+- `shared/types/outlineImportConflict.ts` / `shared/utils/outlineImportConflictApply.ts`：设定冲突模型与选择应用。
+- `shared/types/outlineCreateBootstrap.ts`：从大纲开书的草稿模型。
+- `server/src/services/novel/volume/OutlineImportService.ts`：导入预览与 AI 回退（含无 novelId 解析）。
+- `server/src/services/novel/volume/OutlineImportConflictService.ts`：设定冲突分析（不写库）。
+- `server/src/services/novel/volume/OutlineCreateBootstrapService.ts`：从大纲开新书编排。
+- `server/src/prompting/prompts/novel/volume/outlineImport.prompts.ts`：外部大纲整理 PromptAsset。
+- `server/src/prompting/prompts/novel/volume/outlineImportConflict.prompts.ts`：设定冲突分析 PromptAsset。
+- `server/src/prompting/prompts/novel/create/fromOutlineBootstrap.prompts.ts`：开书草稿抽取 PromptAsset。
 - `docs/wiki/prompts/novel-generation-quality-guards.md`：卷级关键节点守卫缺口。

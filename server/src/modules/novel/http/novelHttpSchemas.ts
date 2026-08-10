@@ -234,6 +234,11 @@ export const updateChapterSchema = z.object({
   characterScore: z.number().int().min(0).max(100).nullable().optional(),
   pacingScore: z.number().int().min(0).max(100).nullable().optional(),
   riskFlags: z.string().nullable().optional(),
+  /**
+   * When false, only persist chapter fields (fast path for frequent editor saves).
+   * When true/omitted, also sync chapter artifacts, volume mirror, and RAG upsert.
+   */
+  syncArtifacts: z.boolean().optional(),
 });
 
 export const characterSchema = z.object({
@@ -334,6 +339,81 @@ export const llmGenerateSchema = z.object({
   provider: llmProviderSchema.optional(),
   model: z.string().trim().optional(),
   temperature: z.number().min(0).max(2).optional(),
+});
+
+export const volumeOutlineImportSchema = llmGenerateSchema.extend({
+  text: z.string().trim().min(1).max(200_000),
+  mode: z.enum(["auto", "template", "ai"]).optional(),
+});
+
+export const volumeOutlineImportConflictSchema = llmGenerateSchema.extend({
+  parsed: z.object({
+    volumes: z.array(z.object({
+      title: z.string(),
+      chapters: z.array(z.object({
+        title: z.string(),
+        summary: z.string(),
+        purpose: z.string().nullable().optional(),
+        mustAvoid: z.string().nullable().optional(),
+        taskSheet: z.string().nullable().optional(),
+      }).passthrough()),
+    }).passthrough()),
+    confidence: z.enum(["high", "low"]),
+    issues: z.array(z.string()),
+    chapterCount: z.number().int().min(1),
+    hasVolumeMarkers: z.boolean(),
+  }).passthrough(),
+});
+
+const outlineCreateParsedSchema = z.object({
+  volumes: z.array(z.object({
+    title: z.string(),
+    chapters: z.array(z.object({
+      title: z.string(),
+      summary: z.string(),
+      purpose: z.string().nullable().optional(),
+      mustAvoid: z.string().nullable().optional(),
+      taskSheet: z.string().nullable().optional(),
+    }).passthrough()),
+  }).passthrough()),
+  confidence: z.enum(["high", "low"]),
+  issues: z.array(z.string()),
+  chapterCount: z.number().int().min(1),
+  hasVolumeMarkers: z.boolean(),
+}).passthrough();
+
+const outlineCreateBootstrapDraftSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(4_000).default(""),
+  targetAudience: z.string().trim().max(400).default(""),
+  commercialTags: z.array(z.string().trim().min(1).max(20)).max(6).default([]),
+  bookSellingPoint: z.string().trim().max(400).default(""),
+  competingFeel: z.string().trim().max(400).default(""),
+  first30ChapterPromise: z.string().trim().max(800).default(""),
+  characters: z.array(z.object({
+    name: z.string().trim().min(1).max(80),
+    role: z.string().trim().max(80).default("配角"),
+    personality: z.string().trim().max(800).default(""),
+    background: z.string().trim().max(1200).default(""),
+    appearance: z.string().trim().max(400).nullable().optional(),
+    development: z.string().trim().max(800).nullable().optional(),
+    selected: z.boolean().optional(),
+  }).passthrough()).max(24).default([]),
+  worldDraft: z.object({
+    title: z.string().trim().max(80),
+    coverSummary: z.string().trim().max(300),
+    sourceText: z.string().trim().max(8_000),
+  }).passthrough().nullable().optional(),
+}).passthrough();
+
+export const createNovelFromOutlinePreviewSchema = llmGenerateSchema.extend({
+  text: z.string().trim().min(1).max(200_000),
+  mode: z.enum(["auto", "template", "ai"]).optional(),
+});
+
+export const createNovelFromOutlineSchema = llmGenerateSchema.extend({
+  parsed: outlineCreateParsedSchema,
+  bootstrap: outlineCreateBootstrapDraftSchema,
 });
 
 export const volumeGenerateSchema = llmGenerateSchema.extend({
@@ -487,6 +567,51 @@ export const rewritePreviewSchema = z.object({
   provider: llmProviderSchema.optional(),
   model: z.string().trim().max(120).optional(),
   temperature: z.number().min(0).max(2).optional(),
+});
+
+export const aiWritingDetectSchema = z.object({
+  content: z.string().optional(),
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  includeDeterministic: z.boolean().optional(),
+});
+
+export const styleBenchmarkReferenceSchema = z.object({
+  kind: z.enum(["style_profile", "knowledge_document", "novel"]),
+  id: z.string().trim().min(1).max(120),
+});
+
+export const styleBenchmarkRewriteSchema = z.object({
+  content: z.string().optional(),
+  reference: styleBenchmarkReferenceSchema,
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+
+export const styleBenchmarkCompareSchema = z.object({
+  userContent: z.string().trim().min(1),
+  benchmarkContent: z.string().trim().min(1),
+  reference: styleBenchmarkReferenceSchema.optional(),
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+
+export const styleBenchmarkCacheSaveSchema = z.object({
+  session: z.object({
+    version: z.number().int().min(1).max(20),
+    novelId: z.string().trim().min(1).max(120),
+    chapterId: z.string().trim().min(1).max(120),
+    selectedSourceKey: z.string().max(240).default(""),
+    benchmarks: z.array(z.unknown()).max(12),
+    compareBySessionId: z.record(z.string(), z.unknown()).default({}),
+    activeSessionIds: z.array(z.string().trim().min(1).max(120)).max(4).default([]),
+    focusedSessionId: z.string().trim().min(1).max(120).nullable().default(null),
+    layoutColumns: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(1),
+    updatedAt: z.string().trim().min(1).max(80),
+  }),
 });
 
 export const aiRevisionPreviewSchema = z.object({

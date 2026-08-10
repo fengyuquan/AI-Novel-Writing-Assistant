@@ -1,5 +1,7 @@
 packages:
+  - admin
   - client
+  - cli
   - desktop
   - server
   - site

@@ -6,6 +6,14 @@ import type {
 import type {
   ChapterEditorAiRevisionRequest,
   ChapterEditorAiRevisionResponse,
+  ChapterEditorAiWritingDetectRequest,
+  ChapterEditorAiWritingDetectResponse,
+  ChapterEditorStyleBenchmarkCacheSession,
+  ChapterEditorStyleBenchmarkCompareRequest,
+  ChapterEditorStyleBenchmarkCompareResponse,
+  ChapterEditorStyleBenchmarkRewriteRequest,
+  ChapterEditorStyleBenchmarkRewriteResponse,
+  ChapterEditorStyleBenchmarkSourcesResponse,
   Chapter,
   ChapterEditorWorkspaceResponse,
   ChapterEditorRewritePreviewRequest,
@@ -66,6 +74,8 @@ export async function updateNovelChapter(
     characterScore: number;
     pacingScore: number;
     riskFlags: string;
+    /** false = persist content only; true/omit = also sync artifacts/RAG. */
+    syncArtifacts: boolean;
   }>,
 ) {
   const { data } = await apiClient.put<ApiResponse<Chapter>>(`/novels/${id}/chapters/${chapterId}`, payload);
@@ -119,6 +129,75 @@ export async function previewChapterAiRevision(
   const { data } = await apiClient.post<ApiResponse<ChapterEditorAiRevisionResponse>>(
     `/novels/${novelId}/chapters/${chapterId}/editor/ai-revision-preview`,
     payload,
+  );
+  return data;
+}
+
+export async function detectChapterAiWriting(
+  novelId: string,
+  chapterId: string,
+  payload: ChapterEditorAiWritingDetectRequest = {},
+) {
+  const { data } = await apiClient.post<ApiResponse<ChapterEditorAiWritingDetectResponse>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/ai-writing-detect`,
+    payload,
+  );
+  return data;
+}
+
+export async function listChapterStyleBenchmarkSources(novelId: string, chapterId: string) {
+  const { data } = await apiClient.get<ApiResponse<ChapterEditorStyleBenchmarkSourcesResponse>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/style-benchmark/sources`,
+  );
+  return data;
+}
+
+export async function rewriteChapterStyleBenchmark(
+  novelId: string,
+  chapterId: string,
+  payload: ChapterEditorStyleBenchmarkRewriteRequest,
+) {
+  const { data } = await apiClient.post<ApiResponse<ChapterEditorStyleBenchmarkRewriteResponse>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/style-benchmark/rewrite`,
+    payload,
+  );
+  return data;
+}
+
+export async function compareChapterStyleBenchmark(
+  novelId: string,
+  chapterId: string,
+  payload: ChapterEditorStyleBenchmarkCompareRequest,
+) {
+  const { data } = await apiClient.post<ApiResponse<ChapterEditorStyleBenchmarkCompareResponse>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/style-benchmark/compare`,
+    payload,
+  );
+  return data;
+}
+
+export async function getChapterStyleBenchmarkCache(novelId: string, chapterId: string) {
+  const { data } = await apiClient.get<ApiResponse<ChapterEditorStyleBenchmarkCacheSession | null>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/style-benchmark/cache`,
+  );
+  return data;
+}
+
+export async function saveChapterStyleBenchmarkCache(
+  novelId: string,
+  chapterId: string,
+  session: ChapterEditorStyleBenchmarkCacheSession,
+) {
+  const { data } = await apiClient.put<ApiResponse<ChapterEditorStyleBenchmarkCacheSession>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/style-benchmark/cache`,
+    { session },
+  );
+  return data;
+}
+
+export async function clearChapterStyleBenchmarkCache(novelId: string, chapterId: string) {
+  const { data } = await apiClient.delete<ApiResponse<{ cleared: boolean }>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/style-benchmark/cache`,
   );
   return data;
 }

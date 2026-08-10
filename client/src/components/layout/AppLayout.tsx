@@ -16,10 +16,13 @@ import {
   shouldUseAutoDirectorMobileFullWidthContent,
 } from "@/mobile/autoDirector";
 import { CreationSetupProvider } from "@/components/onboarding/CreationSetupContext";
+import PageFindReplaceHost from "@/components/findReplace/PageFindReplaceHost";
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "ai-novel.sidebar.collapsed";
 const WORKSPACE_RAIL_COLLAPSED_STORAGE_KEY = "ai-novel.workspace-rail.collapsed";
 const DEFAULT_APP_MAIN_CLASS_NAME = "h-[calc(100dvh-4rem)] min-w-0 flex-1 overflow-y-auto p-6";
+const CHAPTER_EDITOR_APP_MAIN_CLASS_NAME =
+  "flex h-[calc(100dvh-4rem)] min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 md:p-6";
 
 export default function AppLayout() {
   const location = useLocation();
@@ -28,6 +31,7 @@ export default function AppLayout() {
   const [workspaceNavMode, setWorkspaceNavMode] = useState<"workspace" | "project">("project");
   const isMobileViewport = useIsMobileViewport();
   const isNovelPreview = Boolean(matchPath("/novels/:id/preview", location.pathname));
+  const isChapterEditor = Boolean(matchPath("/novels/:id/chapters/:chapterId", location.pathname));
 
   const workspaceRoute = useMemo(() => {
     const editMatch = matchPath("/novels/:id/edit", location.pathname);
@@ -48,6 +52,9 @@ export default function AppLayout() {
   }, [location.pathname]);
 
   const isNovelWorkspace = Boolean(workspaceRoute?.novelId);
+  const appMainClassName = isChapterEditor
+    ? CHAPTER_EDITOR_APP_MAIN_CLASS_NAME
+    : DEFAULT_APP_MAIN_CLASS_NAME;
   const useMobileNovelWorkspaceLayout = isMobileViewport && isNovelWorkspace;
   const useMobileSiteLayout = isMobileViewport && !isNovelWorkspace;
   const useMobileFullWidthContent = useMemo(
@@ -84,6 +91,7 @@ export default function AppLayout() {
             <Suspense fallback={<AppRouteFallback />}>
               <Outlet />
             </Suspense>
+            <PageFindReplaceHost />
             <TaskRecoveryDialog />
           </div>
         </TaskRecoveryProvider>
@@ -102,6 +110,7 @@ export default function AppLayout() {
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
           </Suspense>
+          <PageFindReplaceHost />
           <TaskRecoveryDialog />
         </div>
       </TaskRecoveryProvider>
@@ -119,6 +128,7 @@ export default function AppLayout() {
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
           </Suspense>
+          <PageFindReplaceHost />
           <TaskRecoveryDialog />
         </MobileSiteShell>
       </TaskRecoveryProvider>
@@ -153,12 +163,13 @@ export default function AppLayout() {
               />
             )}
           </div>
-          <main className={useMobileFullWidthContent ? AUTO_DIRECTOR_MOBILE_CLASSES.appMain : DEFAULT_APP_MAIN_CLASS_NAME}>
+          <main className={useMobileFullWidthContent ? AUTO_DIRECTOR_MOBILE_CLASSES.appMain : appMainClassName}>
             <Suspense fallback={<AppRouteFallback />}>
               <Outlet />
             </Suspense>
           </main>
         </div>
+        <PageFindReplaceHost />
         <TaskRecoveryDialog />
       </div>
     </TaskRecoveryProvider>

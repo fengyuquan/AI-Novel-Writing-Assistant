@@ -27,16 +27,25 @@ export interface ChapterEditorSessionState extends Partial<ChapterEditorAiRevisi
   errorMessage?: string;
 }
 
+export interface ChapterEditorNeighborChapter {
+  id: string;
+  order: number;
+  title: string;
+}
+
 export interface ChapterEditorShellProps {
   novelId: string;
   novelTitle?: string;
   chapter: Chapter | undefined;
   chapters?: Chapter[];
+  previousChapter?: ChapterEditorNeighborChapter | null;
+  nextChapter?: ChapterEditorNeighborChapter | null;
   workspace: ChapterEditorWorkspaceResponse | null;
   workspaceStatus: "loading" | "ready" | "error";
   onBack?: () => void;
   onOpenVersionHistory?: () => void;
   onNavigateChapter?: (chapterId: string) => void;
+  onGoChapter?: (chapterId: string) => void;
   onRunFullAudit?: () => void;
   onGenerateChapterPlan?: () => void;
   onReplanChapter?: () => void;

@@ -29,12 +29,20 @@ export default function NovelChapterEdit() {
   });
 
   const detail = novelDetailQuery.data?.data;
-  const chapters = detail?.chapters ?? [];
-  const chapter = useMemo(
-    () => chapters.find((item) => item.id === chapterId),
+  const novelTitle = detail?.title?.trim() || "未命名小说";
+  const chapters = useMemo(
+    () => (detail?.chapters ?? []).slice().sort((left, right) => left.order - right.order),
+    [detail?.chapters],
+  );
+  const chapterIndex = useMemo(
+    () => chapters.findIndex((item) => item.id === chapterId),
     [chapterId, chapters],
   );
-  const novelTitle = detail?.title?.trim() || "未命名小说";
+  const chapter = chapterIndex >= 0 ? chapters[chapterIndex] : undefined;
+  const previousChapter = chapterIndex > 0 ? chapters[chapterIndex - 1] : null;
+  const nextChapter = chapterIndex >= 0 && chapterIndex < chapters.length - 1
+    ? chapters[chapterIndex + 1]
+    : null;
 
   if (novelDetailQuery.isLoading && !detail) {
     return (
@@ -60,14 +68,22 @@ export default function NovelChapterEdit() {
     );
   }
 
+  const goChapter = (nextChapterId: string) => navigate(`/novels/${id}/chapters/${nextChapterId}`);
+
   return (
-    <div className="mobile-page-chapter-edit min-h-dvh overflow-x-hidden">
+    <div className="mobile-page-chapter-edit flex h-full min-h-dvh min-h-0 flex-1 flex-col overflow-x-hidden">
       <ChapterEditorShell
-        key={`${chapter.id}:${chapter.updatedAt}`}
+        key={chapter.id}
         novelId={id}
         novelTitle={novelTitle}
         chapter={chapter}
         chapters={chapters}
+        previousChapter={previousChapter
+          ? { id: previousChapter.id, order: previousChapter.order, title: previousChapter.title }
+          : null}
+        nextChapter={nextChapter
+          ? { id: nextChapter.id, order: nextChapter.order, title: nextChapter.title }
+          : null}
         workspace={chapterEditorWorkspaceQuery.data?.data ?? null}
         workspaceStatus={chapterEditorWorkspaceQuery.isLoading
           ? "loading"
@@ -76,7 +92,8 @@ export default function NovelChapterEdit() {
             : "ready"}
         onBack={() => navigate(`/novels/${id}/edit`)}
         onOpenVersionHistory={() => navigate(`/novels/${id}/edit`)}
-        onNavigateChapter={(nextChapterId) => navigate(`/novels/${id}/chapters/${nextChapterId}`)}
+        onNavigateChapter={goChapter}
+        onGoChapter={goChapter}
       />
     </div>
   );

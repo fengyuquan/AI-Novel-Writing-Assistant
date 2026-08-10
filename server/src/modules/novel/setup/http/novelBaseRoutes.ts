@@ -9,6 +9,10 @@ import { validate } from "../../../../middleware/validate";
 import { KnowledgeService } from "../../../../services/knowledge/KnowledgeService";
 import { novelCreateResourceRecommendationService } from "../../../../services/novel/NovelCreateResourceRecommendationService";
 import type { NovelApplicationServices } from "../../../../services/novel/application/NovelApplicationContracts";
+import {
+  createNovelFromOutlinePreviewSchema,
+  createNovelFromOutlineSchema,
+} from "../../http/novelHttpSchemas";
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -150,6 +154,8 @@ interface RegisterNovelBaseRoutesInput {
     | "getNovelById"
     | "updateNovel"
     | "deleteNovel"
+    | "previewCreateNovelFromOutline"
+    | "createNovelFromOutline"
   >;
 }
 
@@ -207,6 +213,40 @@ export function registerNovelBaseRoutes(input: RegisterNovelBaseRoutesInput): vo
       next(error);
     }
   });
+
+  router.post(
+    "/create-from-outline/preview",
+    validate({ body: createNovelFromOutlinePreviewSchema }),
+    async (req, res, next) => {
+      try {
+        const data = await novelService.previewCreateNovelFromOutline(req.body as any);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "已根据大纲生成开书草稿，请确认后创建。",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/create-from-outline",
+    validate({ body: createNovelFromOutlineSchema }),
+    async (req, res, next) => {
+      try {
+        const data = await novelService.createNovelFromOutline(req.body as any);
+        res.status(201).json({
+          success: true,
+          data,
+          message: "已从大纲创建小说。",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   router.get("/:id", validate({ params: idParamsSchema }), async (req, res, next) => {
     try {

@@ -1,0 +1,84 @@
+ARG NODE_IMAGE=node:22-bookworm-slim
+FROM ${NODE_IMAGE} AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+ENV NODE_ENV=development
+# 国内构建：npm/pnpm 走 npmmirror，避免官方源过慢
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+USER root
+# bookworm-slim 初始没有 ca-certificates，先用 HTTP 镜像源装证书和编译依赖
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e 's|https://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|http://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|https://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        -e 's|http://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e 's|https://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|http://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|https://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        -e 's|http://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        /etc/apt/sources.list; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates python3 make g++ openssl; \
+    rm -rf /var/lib/apt/lists/*; \
+    corepack enable
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json .npmrc ./
+COPY client/package.json ./client/package.json
+COPY server/package.json ./server/package.json
+COPY shared/package.json ./shared/package.json
+COPY cli/package.json ./cli/package.json
+COPY desktop/package.json ./desktop/package.json
+COPY site/package.json ./site/package.json
+ENV AI_NOVEL_DATABASE_MODE=sqlite
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+WORKDIR /app
+ENV AI_NOVEL_DATABASE_MODE=sqlite
+ENV DATABASE_URL=file:/tmp/build-dev.db
+# 4G 云主机：提高 Node 堆，并拆开编译步骤降低峰值内存
+ENV NODE_OPTIONS=--max-old-space-size=2048
+COPY shared ./shared
+COPY server/package.json server/tsconfig.json server/prisma.config.ts ./server/
+COPY server/src ./server/src
+RUN pnpm --filter @ai-novel/shared build
+RUN pnpm --filter @ai-novel/server prisma:generate
+RUN pnpm --filter @ai-novel/server build
+
+# 复用 build 产物，避免再开一套并行 pnpm install（4G 机器必炸）
+FROM build AS release
+WORKDIR /app
+USER root
+COPY infra/deploy/api-entrypoint-sqlite.sh /app/api-entrypoint-sqlite.sh
+RUN mkdir -p /app/server/data /app/server/storage/generated-images /app/.logs /app/node_modules/.bin \
+    && printf '%s\n' '#!/bin/sh' 'exec node /app/server/node_modules/prisma/build/index.js --config /app/server/prisma.config.ts "$@"' > /app/node_modules/.bin/prisma \
+    && chmod +x /app/node_modules/.bin/prisma /app/api-entrypoint-sqlite.sh \
+    && chown -R node:node /app
+
+ARG NODE_IMAGE
+FROM ${NODE_IMAGE} AS runtime
+USER root
+WORKDIR /app
+ENV NODE_ENV=production
+ENV AI_NOVEL_DATABASE_MODE=sqlite
+ENV DATABASE_URL=file:/app/server/data/dev.db
+ENV SQLITE_DATABASE_PATH=/app/server/data/dev.db
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV RAG_ENABLED=false
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+COPY --from=release --chown=node:node /app /app
+USER node
+EXPOSE 3000
+ENTRYPOINT ["/app/api-entrypoint-sqlite.sh"]

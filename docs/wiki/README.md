@@ -18,6 +18,7 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 - [模块边界与文档治理](./architecture/module-boundaries.md)
 - [当前模型选择与厂商默认模型边界](./architecture/model-selection.md)
 - [配置项归属与可见性规范](./architecture/configuration-conventions.md)
+- [数据管理控制台](./architecture/admin-db-console.md)
 
 ### Workflows
 
@@ -48,7 +49,10 @@ Wiki 不记录单次提交改了什么，也不替代 release notes。它只记�
 ### Product
 
 - [新手优先与整本小说完成原则](./product/beginner-first-novel-completion.md)
+- [章节编辑器 AI 写法检测](./product/ai-writing-detect.md)
+- [章节编辑器范本对照](./product/style-benchmark-compare.md)
 - [工作台状态表达与下一步合同](./product/workspace-status-expression.md)
+- [命令行交互壳边界](./product/cli-interactive-shell.md)
 
 ## 写作边界
 

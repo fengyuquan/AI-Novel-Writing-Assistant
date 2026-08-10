@@ -4,11 +4,12 @@ dist/
 .DS_Store
 .env
 .env.local
-dev.db
+/dev.db
 client/.env
 client/.env.local
 server/.env
 server/.env.local
+# 本地 SQLite 库含用户数据，不纳入版本库。
 server/dev.db
 server/dev.db-shm
 server/dev.db-wal
@@ -20,6 +21,12 @@ server/tmp/**/*.sqlite
 server/tmp/**/*.sqlite*
 server/tmp/**/*.sqlite-*
 server/storage/
+server/admin-audit.jsonl
+**/admin-audit.jsonl
+server/backups/
+**/backups/dev-*.db
+**/backups/dev-*.db-wal
+**/backups/dev-*.db-shm
 server/src/prisma/dev.db
 server/src/prisma/dev.db-journal
 .history/
@@ -39,3 +46,9 @@ server/prisma-diff-migrations-to-schema.sql
 .spec-workflow/
 .codex-backups/
 .cursor/
+
+# Cloud / Docker local data
+data/
+
+infra/deploy/cloud.env
+

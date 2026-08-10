@@ -452,6 +452,122 @@ export interface ChapterEditorRewritePreviewResponse {
   activeCandidateId: string | null;
 }
 
+export interface ChapterEditorAiWritingDetectIssue {
+  severity: "low" | "medium" | "high" | "critical";
+  code: string;
+  description: string;
+  evidence: string;
+  fixSuggestion: string;
+  source: "llm" | "deterministic";
+}
+
+export interface ChapterEditorAiWritingDetectRequest {
+  content?: string;
+  provider?: import("./llm").LLMProvider;
+  model?: string;
+  temperature?: number;
+  includeDeterministic?: boolean;
+}
+
+export interface ChapterEditorAiWritingDetectResponse {
+  riskScore: number;
+  naturalnessScore: number;
+  summary: string;
+  issues: ChapterEditorAiWritingDetectIssue[];
+}
+
+/** 范本对照：学习范本来源（写法档案 / 知识库文档 / 小说项目） */
+export type ChapterEditorStyleBenchmarkSourceKind =
+  | "style_profile"
+  | "knowledge_document"
+  | "novel";
+
+export interface ChapterEditorStyleBenchmarkSourceOption {
+  kind: ChapterEditorStyleBenchmarkSourceKind;
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  sampleReady: boolean;
+}
+
+export interface ChapterEditorStyleBenchmarkSourcesResponse {
+  styleProfiles: ChapterEditorStyleBenchmarkSourceOption[];
+  knowledgeDocuments: ChapterEditorStyleBenchmarkSourceOption[];
+  novels: ChapterEditorStyleBenchmarkSourceOption[];
+}
+
+export interface ChapterEditorStyleBenchmarkReference {
+  kind: ChapterEditorStyleBenchmarkSourceKind;
+  id: string;
+}
+
+export interface ChapterEditorStyleBenchmarkRewriteRequest {
+  content?: string;
+  reference: ChapterEditorStyleBenchmarkReference;
+  provider?: import("./llm").LLMProvider;
+  model?: string;
+  temperature?: number;
+}
+
+export interface ChapterEditorStyleBenchmarkRewriteResponse {
+  sessionId: string;
+  reference: ChapterEditorStyleBenchmarkSourceOption;
+  userContent: string;
+  benchmarkContent: string;
+  styleNotes: string;
+  plotFidelityNotes: string;
+  /** 生成时使用的模型厂商；同一范文不同模型视为不同版本。 */
+  provider?: import("./llm").LLMProvider | null;
+  /** 生成时使用的模型名；同一范文不同模型视为不同版本。 */
+  model?: string | null;
+}
+
+export interface ChapterEditorStyleBenchmarkCompareRequest {
+  userContent: string;
+  benchmarkContent: string;
+  reference?: ChapterEditorStyleBenchmarkReference;
+  provider?: import("./llm").LLMProvider;
+  model?: string;
+  temperature?: number;
+}
+
+export interface ChapterEditorStyleBenchmarkSegmentCritique {
+  segmentIndex: number;
+  beatLabel: string;
+  userExcerpt: string;
+  benchmarkExcerpt: string;
+  winner: "user" | "benchmark" | "tie";
+  whyBetter: string;
+  howToImproveWeaker: string;
+}
+
+export interface ChapterEditorStyleBenchmarkCompareResponse {
+  sessionId: string;
+  summary: string;
+  overallWinner: "user" | "benchmark" | "tie";
+  segments: ChapterEditorStyleBenchmarkSegmentCritique[];
+}
+
+export type ChapterEditorStyleBenchmarkLayoutColumns = 1 | 2 | 3 | 4;
+
+/** 章节绑定的范本对照缓存（落库，重开章节仍可用）。 */
+export interface ChapterEditorStyleBenchmarkCacheSession {
+  version: number;
+  novelId: string;
+  chapterId: string;
+  selectedSourceKey: string;
+  benchmarks: ChapterEditorStyleBenchmarkRewriteResponse[];
+  compareBySessionId: Record<string, ChapterEditorStyleBenchmarkCompareResponse>;
+  activeSessionIds: string[];
+  focusedSessionId: string | null;
+  layoutColumns: ChapterEditorStyleBenchmarkLayoutColumns;
+  updatedAt: string;
+}
+
+export interface ChapterEditorStyleBenchmarkCacheSaveRequest {
+  session: ChapterEditorStyleBenchmarkCacheSession;
+}
+
 export interface NovelGenre {
   id: string;
   name: string;

@@ -86,8 +86,9 @@ function getChangedFields(existing: OutlineSyncChapter, chapter: StructuredChapt
   if (!compareNullableString(existing.title, chapter.title)) {
     changed.push("标题");
   }
-  if (!compareNullableString(existing.expectation, chapter.summary)) {
-    changed.push("摘要");
+  // Chapter.expectation stores execution goal (purpose), not planning summary.
+  if (!compareNullableString(existing.expectation, chapter.purpose?.trim() || chapter.summary)) {
+    changed.push("章节目标");
   }
   if (!compareNullableNumber(existing.targetWordCount, chapter.targetWordCount)) {
     changed.push("目标字数");

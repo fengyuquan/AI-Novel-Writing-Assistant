@@ -15,7 +15,17 @@ import { findBeatSheet } from "../volumePlan.utils";
 import StructuredBeatSheetCard from "./StructuredBeatSheetCard";
 import StructuredChapterListCard from "./StructuredChapterListCard";
 import StructuredChapterDetailCard from "./StructuredChapterDetailCard";
+import OutlineImportDialog from "./outlineImport/OutlineImportDialog";
+import {
+  clearOutlineImportPendingAlignments,
+  loadOutlineImportPendingAlignments,
+} from "./outlineImport/outlineImportPendingStorage";
 import WorldInjectionHint from "./WorldInjectionHint";
+import type { OutlineImportPendingAlignmentItem } from "@ai-novel/shared/types/outlineImportConflict";
+import {
+  OUTLINE_IMPORT_CONFLICT_CATEGORY_LABELS,
+  OUTLINE_IMPORT_CONFLICT_CHOICE_LABELS,
+} from "@ai-novel/shared/types/outlineImportConflict";
 import {
   chapterMatchesBeat,
   findChapterBeat,
@@ -96,6 +106,7 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
     onApplySync,
     isApplyingSync,
     syncMessage,
+    onApplyImportedVolumes,
     onChapterFieldChange,
     onChapterNumberChange,
     onChapterPayoffRefsChange,
@@ -106,6 +117,13 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
     isSaving,
   } = props;
 
+  const [importOpen, setImportOpen] = useState(false);
+  const [pendingAlignments, setPendingAlignments] = useState<OutlineImportPendingAlignmentItem[]>(() =>
+    loadOutlineImportPendingAlignments(novelId),
+  );
+  useEffect(() => {
+    setPendingAlignments(loadOutlineImportPendingAlignments(novelId));
+  }, [novelId]);
   const workspaceId = novelId || "draft-structured-outline";
   const defaultVolumeId = volumes[0]?.id ?? "";
   const defaultChapterId = volumes[0]?.chapters[0]?.id ?? "";
@@ -266,14 +284,63 @@ export default function StructuredOutlineWorkspace(props: StructuredTabViewProps
       <CardHeader className="flex flex-col gap-4 rounded-2xl bg-muted/20 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
           <CardTitle>节奏 / 拆章</CardTitle>
-          <div className="text-sm text-muted-foreground">先选卷，再看节奏，再从对应章节里挑当前要细化的一章。</div>
+          <div className="text-sm text-muted-foreground">先选卷，再看节奏，再从对应章节里挑当前要细化的一章。也可以导入外部大纲替换当前拆章。</div>
         </div>
-        <Button variant="secondary" onClick={onSave} disabled={isSaving}>
-          {isSaving ? "保存中..." : "保存卷工作区"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
+            导入大纲
+          </Button>
+          <Button variant="secondary" onClick={onSave} disabled={isSaving}>
+            {isSaving ? "保存中..." : "保存卷工作区"}
+          </Button>
+        </div>
       </CardHeader>
+      <OutlineImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        novelId={novelId}
+        volumes={volumes}
+        onApply={(nextVolumes, options) => {
+          onApplyImportedVolumes(nextVolumes, options);
+          setPendingAlignments(options?.pendingAlignments ?? []);
+        }}
+      />
       <CardContent className="space-y-5 px-0 pt-5">
         <WorldInjectionHint worldInjectionSummary={worldInjectionSummary} />
+
+        {pendingAlignments.length > 0 ? (
+          <div className="space-y-2 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-medium">
+                有 {pendingAlignments.length} 条设定待对齐
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  clearOutlineImportPendingAlignments(novelId);
+                  setPendingAlignments([]);
+                }}
+              >
+                清除提醒
+              </Button>
+            </div>
+            <p className="text-xs text-amber-800">
+              导入大纲时你选择了「跟大纲」或「稍后处理」。拆章已按大纲覆盖；角色、世界观等设定还没改，可稍后到对应页面手动对齐。
+            </p>
+            <ul className="max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-xs text-amber-900">
+              {pendingAlignments.map((item) => (
+                <li key={`${item.conflictId}-${item.createdAt}`}>
+                  [{OUTLINE_IMPORT_CONFLICT_CATEGORY_LABELS[item.category]}] {item.title}
+                  {" · "}
+                  {OUTLINE_IMPORT_CONFLICT_CHOICE_LABELS[item.choice]}
+                  {item.settingLabel ? ` · ${item.settingLabel}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {directorTakeoverEntry ? (
           <div className="flex flex-col gap-3 rounded-2xl bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">

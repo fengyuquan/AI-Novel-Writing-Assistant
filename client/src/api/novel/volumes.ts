@@ -11,7 +11,17 @@ import type {
   VolumePlanVersionSummary,
   VolumeSyncPreview,
 } from "@ai-novel/shared/types/novel";
+import type { OutlineImportConflictAnalysisResult } from "@ai-novel/shared/types/outlineImportConflict";
+import type { ParsedChapterOutline } from "@ai-novel/shared/utils/outlineImport";
 import { apiClient } from "../client";
+
+export type VolumeOutlineImportMode = "auto" | "template" | "ai";
+
+export type VolumeOutlineImportResult = {
+  parsed: ParsedChapterOutline;
+  usedAi: boolean;
+  warnings: string[];
+};
 
 export type SlimVolumeGenerationResponse = VolumePlanDocument & {
   slimmed: true;
@@ -32,6 +42,39 @@ export async function updateNovelVolumes(
   },
 ) {
   const { data } = await apiClient.put<ApiResponse<VolumePlanDocument>>(`/novels/${id}/volumes`, payload);
+  return data;
+}
+
+export async function importNovelVolumeOutline(
+  id: string,
+  payload: {
+    text: string;
+    mode?: VolumeOutlineImportMode;
+    provider?: LLMProvider;
+    model?: string;
+    temperature?: number;
+  },
+) {
+  const { data } = await apiClient.post<ApiResponse<VolumeOutlineImportResult>>(
+    `/novels/${id}/volumes/import-outline`,
+    payload,
+  );
+  return data;
+}
+
+export async function analyzeNovelVolumeOutlineConflicts(
+  id: string,
+  payload: {
+    parsed: ParsedChapterOutline;
+    provider?: LLMProvider;
+    model?: string;
+    temperature?: number;
+  },
+) {
+  const { data } = await apiClient.post<ApiResponse<OutlineImportConflictAnalysisResult>>(
+    `/novels/${id}/volumes/import-outline/conflicts`,
+    payload,
+  );
   return data;
 }
 

@@ -29,6 +29,7 @@ interface ChapterEditorDirectorPanelProps {
   onAccept: () => void;
   onReject: () => void;
   onRegenerate: () => void;
+  onCollapse?: () => void;
 }
 
 function LoadingBar(props: { widthClassName?: string; heightClassName?: string }) {
@@ -60,6 +61,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
     onAccept,
     onReject,
     onRegenerate,
+    onCollapse,
   } = props;
 
   const isIdle = session.status === "idle";
@@ -76,7 +78,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
         : session.resolvedIntent?.reasoningSummary || "查看待确认改写";
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm xl:min-h-0">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm">
       <div className="shrink-0 space-y-3 border-b border-border/70 px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -100,6 +102,11 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
             >
               细节标记
             </Button>
+            {onCollapse ? (
+              <Button size="sm" variant="ghost" className="hidden xl:inline-flex" onClick={onCollapse}>
+                收起
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -121,7 +128,7 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-gutter:stable]">
         {isIdle ? (
           <>
             {isWorkspaceLoading ? (
@@ -276,13 +283,53 @@ export default function ChapterEditorDirectorPanel(props: ChapterEditorDirectorP
                 <div className="text-sm leading-6 text-muted-foreground">{activeCandidate.summary}</div>
               ) : null}
               {activeCandidate.rationale ? (
-                <div className="text-sm leading-6 text-foreground/80">为什么这样改：{activeCandidate.rationale}</div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-sm leading-6 text-emerald-950">
+                  <span className="font-medium">为什么这样改：</span>
+                  {activeCandidate.rationale}
+                </div>
               ) : null}
               {activeCandidate.riskNotes && activeCandidate.riskNotes.length > 0 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-sm leading-6 text-amber-900">
                   需要注意：{activeCandidate.riskNotes.join("；")}
                 </div>
               ) : null}
+            </div>
+
+            {session.targetRange?.text ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-rose-200/80 bg-rose-50/80 p-3">
+                  <div className="mb-2 text-xs font-medium text-rose-700">原文对照</div>
+                  <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-rose-950">
+                    {session.targetRange.text}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/90 p-3">
+                  <div className="mb-2 text-xs font-medium text-emerald-700">候选改写</div>
+                  <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-emerald-950">
+                    {activeCandidate.content}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={session.viewMode === "block" ? "default" : "outline"}
+                onClick={() => onChangeViewMode("block")}
+              >
+                正文区：段落对比
+              </Button>
+              <Button
+                size="sm"
+                variant={session.viewMode === "inline" ? "default" : "outline"}
+                onClick={() => onChangeViewMode("inline")}
+              >
+                正文区：细节标记
+              </Button>
+            </div>
+            <div className="text-xs leading-5 text-muted-foreground">
+              中间正文区会同步高亮删改；右侧先读「为什么这样改」和对照，再决定是否接受。
             </div>
           </>
         ) : null}

@@ -16,6 +16,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import AppVersionBadge from "../AppVersionBadge";
 import DesktopBrandMark from "../DesktopBrandMark";
 import ProjectGithubLink from "../ProjectGithubLink";
+import { openPageFindReplace } from "@/components/findReplace/PageFindReplaceHost";
 import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog";
 import { Button } from "@/components/ui/button";
 import { VisualAssetLibraryDialog } from "@/components/visualAssets";
@@ -130,6 +131,22 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
               </Button>
             </div>
             <div className="space-y-4">
+              <section className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  页面工具
+                </div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-2xl border bg-muted/20 px-3 py-3 text-left text-sm transition hover:border-primary/40 hover:bg-primary/5"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    openPageFindReplace();
+                  }}
+                >
+                  <span>查找替换</span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </section>
               {moreNavGroups.map((group) => (
                 <section key={group.title} className="space-y-2">
                   <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

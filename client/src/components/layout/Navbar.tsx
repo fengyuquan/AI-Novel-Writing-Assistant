@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import LLMSelector from "@/components/common/LLMSelector";
+import { openPageFindReplace } from "@/components/findReplace/PageFindReplaceHost";
 import { useCreationSetup } from "@/components/onboarding/CreationSetupContext";
 import AppVersionBadge from "@/components/layout/AppVersionBadge";
 import DesktopBrandMark from "@/components/layout/DesktopBrandMark";
@@ -50,6 +51,16 @@ export default function Navbar(props: NavbarProps) {
             {workspaceNavMode === "workspace" ? "项目导航" : "创作导航"}
           </Button>
         ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="hidden sm:inline-flex"
+          onClick={() => openPageFindReplace()}
+          title="在当前页面查找并替换文字（Ctrl+H）"
+        >
+          查找替换
+        </Button>
         <LiveExecutionDialog />
         <Button
           type="button"

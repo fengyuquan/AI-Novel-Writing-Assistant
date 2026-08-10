@@ -176,6 +176,19 @@ function createQualityIssue(
   };
 }
 
+/**
+ * Sync-to-execution hard gate should only run when the chapter already carries a
+ * structured scene plan (a real execution-contract artifact).
+ * Free-text taskSheet from outline import / draft notes must not block creating
+ * chapter shells — full contracts are filled later via JIT chapter detail.
+ */
+export function shouldEnforceExecutionContractSyncGate(chapter: {
+  taskSheet?: string | null;
+  sceneCards?: string | null;
+}): boolean {
+  return Boolean(chapter.sceneCards?.trim());
+}
+
 export function assessChapterExecutionContractShape(
   candidate: ChapterExecutionContractQualityCandidate,
 ): ChapterTaskSheetQualityGateResult {

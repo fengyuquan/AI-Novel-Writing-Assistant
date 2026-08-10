@@ -1,0 +1,37 @@
+**/node_modules
+**/.turbo
+**/.DS_Store
+.git
+.logs
+.tmp
+.history
+.cursor
+.codex-backups
+.claude
+.spec-workflow
+.codegraph
+desktop/build
+desktop/dist
+desktop/runtime-migration-smoke
+desktop/node_modules
+server/tmp
+server/storage
+server/.tmp
+server/dev.db
+server/dev.db-shm
+server/dev.db-wal
+server/src/prisma/dev.db
+server/src/prisma/dev.db-journal
+data
+images
+agent-transcripts
+cli/src
+cli/dist
+site/src
+site/public
+site/scripts
+site/dist
+docs
+*.log
+# 预编译部署需要保留：
+# shared/dist、server/dist、client/dist

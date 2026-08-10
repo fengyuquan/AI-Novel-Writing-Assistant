@@ -587,6 +587,8 @@ export class NovelCoreCrudService {
       throw new Error("章节不存在");
     }
 
+    const shouldSyncArtifacts = input.syncArtifacts !== false;
+
     const chapter = await prisma.chapter.update({
       where: { id: chapterId },
       data: {
@@ -609,6 +611,10 @@ export class NovelCoreCrudService {
         riskFlags: input.riskFlags,
       },
     });
+
+    if (!shouldSyncArtifacts) {
+      return chapter;
+    }
 
     if (typeof input.content === "string") {
       await syncChapterArtifacts(novelId, chapterId, input.content);

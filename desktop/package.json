@@ -14,19 +14,18 @@
     "prepare:runtime": "node scripts/ensure-electron-runtime.cjs --install",
     "verify:runtime": "node scripts/ensure-electron-runtime.cjs",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "pnpm run prepare:runtime && pnpm run build && electron dist/main.js",
-    "start": "pnpm run prepare:runtime && electron dist/main.js"
+    "start": "pnpm run prepare:runtime && electron .",
+    "dev": "pnpm run build && pnpm run start",
+    "pack:dir": "pnpm run build && pnpm run prepare:runtime && electron-builder --win dir --x64 --config.npmRebuild=false",
+    "dist": "pnpm run build && pnpm run prepare:runtime && electron-builder --win nsis --x64 --config.npmRebuild=false"
   },
   "dependencies": {
-    "@ai-novel/server": "workspace:*",
-    "better-sqlite3": "^12.6.2",
-    "electron-updater": "^6.6.2"
+    "electron-store": "^8.2.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.3",
-    "electron": "^35.7.5",
-    "electron-builder": "^26.1.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^20.19.0",
+    "electron": "39.2.7",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.2"
   }
 }

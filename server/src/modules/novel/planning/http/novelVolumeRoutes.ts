@@ -11,6 +11,8 @@ interface RegisterNovelVolumeRoutesInput {
     | "getVolumes"
     | "updateVolumes"
     | "generateVolumes"
+    | "importVolumeOutline"
+    | "analyzeVolumeOutlineConflicts"
     | "listVolumeVersions"
     | "getVolumeVersion"
     | "createVolumeDraft"
@@ -28,6 +30,8 @@ interface RegisterNovelVolumeRoutesInput {
   volumeDraftSchema: z.ZodTypeAny;
   volumeImpactSchema: z.ZodTypeAny;
   volumeGenerateSchema: z.ZodTypeAny;
+  volumeOutlineImportSchema: z.ZodTypeAny;
+  volumeOutlineImportConflictSchema: z.ZodTypeAny;
   volumeSyncSchema: z.ZodTypeAny;
 }
 
@@ -108,6 +112,8 @@ export function registerNovelVolumeRoutes(input: RegisterNovelVolumeRoutesInput)
     volumeDraftSchema,
     volumeImpactSchema,
     volumeGenerateSchema,
+    volumeOutlineImportSchema,
+    volumeOutlineImportConflictSchema,
     volumeSyncSchema,
   } = input;
 
@@ -140,6 +146,42 @@ export function registerNovelVolumeRoutes(input: RegisterNovelVolumeRoutesInput)
           success: true,
           data,
           message: "Volume workspace updated.",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/:id/volumes/import-outline",
+    validate({ params: idParamsSchema, body: volumeOutlineImportSchema }),
+    async (req, res, next) => {
+      try {
+        const { id } = req.params as z.infer<typeof idParamsSchema>;
+        const data = await novelService.importVolumeOutline(id, req.body as any);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "Chapter outline imported for preview.",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/:id/volumes/import-outline/conflicts",
+    validate({ params: idParamsSchema, body: volumeOutlineImportConflictSchema }),
+    async (req, res, next) => {
+      try {
+        const { id } = req.params as z.infer<typeof idParamsSchema>;
+        const data = await novelService.analyzeVolumeOutlineConflicts(id, req.body as any);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "Outline import conflicts analyzed.",
         } satisfies ApiResponse<typeof data>);
       } catch (error) {
         next(error);

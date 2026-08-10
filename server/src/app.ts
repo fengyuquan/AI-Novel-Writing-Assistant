@@ -58,6 +58,7 @@ import {
 } from "./services/bootstrap/SystemResourceBootstrapService";
 import { initializeRagSettingsCompatibility } from "./services/settings/RagCompatibilityBootstrapService";
 import onboardingRoutes from "./modules/setup/onboarding/http/onboardingRoutes";
+import { adminRouter } from "./modules/admin";
 import { qualityDebtSettingsService } from "./services/settings/QualityDebtSettingsService";
 import { DirectorWorker } from "./workers/directorWorker";
 import { cleanupLogDirectory, resolveLogRetentionConfig } from "./platform/logging/logRetention";
@@ -159,6 +160,7 @@ export function createApp() {
   app.use("/api/settings", settingsRouter);
   app.use("/api", onboardingRoutes);
   app.use("/api/astrology", astrologyRouter);
+  app.use("/api/admin", adminRouter);
 
   app.use((_req, res) => {
     const response: ApiResponse<null> = {

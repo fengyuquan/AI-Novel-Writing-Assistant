@@ -318,6 +318,14 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/volume/chapterList.prompts").createVolumeChapterListPrompt(1) as UnknownPromptAsset,
   },
   {
+    key: "novel.volume.outline_import@v2",
+    load: () => require("../prompts/novel/volume/outlineImport.prompts").volumeOutlineImportPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.volume.outline_import_conflict@v1",
+    load: () => require("../prompts/novel/volume/outlineImportConflict.prompts").volumeOutlineImportConflictPrompt as UnknownPromptAsset,
+  },
+  {
     key: "novel.volume.chapter_purpose@v1",
     load: () => require("../prompts/novel/volume/chapterDetail.prompts").volumeChapterPurposePrompt as UnknownPromptAsset,
   },
@@ -430,6 +438,18 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/chapterEditor/rewriteCandidates.prompts").chapterEditorRewriteCandidatesPrompt as UnknownPromptAsset,
   },
   {
+    key: "novel.chapter_editor.ai_writing_detect@v1",
+    load: () => require("../prompts/novel/chapterEditor/aiWritingDetect.prompts").chapterEditorAiWritingDetectPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.chapter_editor.style_benchmark_rewrite@v1",
+    load: () => require("../prompts/novel/chapterEditor/styleBenchmark.prompts").chapterEditorStyleBenchmarkRewritePrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.chapter_editor.style_benchmark_compare@v1",
+    load: () => require("../prompts/novel/chapterEditor/styleBenchmark.prompts").chapterEditorStyleBenchmarkComparePrompt as UnknownPromptAsset,
+  },
+  {
     key: "novel.review.chapter@v2",
     load: () => require("../prompts/novel/review.prompts").chapterReviewPrompt as UnknownPromptAsset,
   },
@@ -444,6 +464,10 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
   {
     key: "novel.framing.suggest@v1",
     load: () => require("../prompts/novel/framing.prompts").novelFramingSuggestionPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "novel.create.from_outline_bootstrap@v2",
+    load: () => require("../prompts/novel/create/fromOutlineBootstrap.prompts").fromOutlineBootstrapPrompt as UnknownPromptAsset,
   },
   {
     key: "novel.continuation.rewrite_similarity@v1",

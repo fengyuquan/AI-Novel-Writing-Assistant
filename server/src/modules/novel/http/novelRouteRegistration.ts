@@ -29,6 +29,10 @@ import { registerShortStoryRoutes } from "../short-story/http/shortStoryRoutes";
 import { registerWritingPlatformRoutes } from "../writing-platform/http/writingPlatformRoutes";
 import {
   aiRevisionPreviewSchema,
+  aiWritingDetectSchema,
+  styleBenchmarkCacheSaveSchema,
+  styleBenchmarkCompareSchema,
+  styleBenchmarkRewriteSchema,
   arcPlanParamsSchema,
   auditIssueParamsSchema,
   beatGenerateSchema,
@@ -62,6 +66,8 @@ import {
   volumeDraftSchema,
   volumeGenerateSchema,
   volumeImpactSchema,
+  volumeOutlineImportSchema,
+  volumeOutlineImportConflictSchema,
   volumeSyncSchema,
   volumeVersionParamsSchema,
 } from "./novelHttpSchemas";
@@ -111,6 +117,10 @@ export function registerNovelHttpRoutes(router: Router, services: NovelHttpServi
     chapterParamsSchema,
     rewritePreviewSchema,
     aiRevisionPreviewSchema,
+    aiWritingDetectSchema,
+    styleBenchmarkRewriteSchema,
+    styleBenchmarkCompareSchema,
+    styleBenchmarkCacheSaveSchema,
     forwardBusinessError,
   });
 
@@ -190,6 +200,8 @@ export function registerNovelHttpRoutes(router: Router, services: NovelHttpServi
     volumeDraftSchema,
     volumeImpactSchema,
     volumeGenerateSchema,
+    volumeOutlineImportSchema,
+    volumeOutlineImportConflictSchema,
     volumeSyncSchema,
   });
 

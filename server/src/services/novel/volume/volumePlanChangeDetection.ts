@@ -138,7 +138,8 @@ function resolveChapterBeatKey(input: {
 function getChapterChangedFields(existing: ExistingChapterRecord, chapter: VolumeChapterPlan, action: "update" | "move"): string[] {
   const changed: string[] = action === "move" ? ["章节顺序"] : [];
   if (!compareText(existing.title, chapter.title)) changed.push("标题");
-  if (!compareText(existing.expectation, chapter.summary)) changed.push("摘要");
+  // Chapter.expectation stores the execution goal (purpose), not the outline summary.
+  if (!compareText(existing.expectation, chapter.purpose?.trim() || chapter.summary)) changed.push("章节目标");
   if (!compareText(existing.exclusiveEvent, chapter.exclusiveEvent)) changed.push("独占事件");
   if (!compareText(existing.endingState, chapter.endingState)) changed.push("章末状态");
   if (!compareText(existing.nextChapterEntryState, chapter.nextChapterEntryState)) changed.push("下章起始状态");
@@ -457,7 +458,7 @@ function collectVolumeChangedFields(beforeVolume: VolumePlan | undefined, afterV
       id: beforeChapter.id,
       order: beforeChapter.chapterOrder,
       title: beforeChapter.title,
-      expectation: beforeChapter.summary,
+      expectation: beforeChapter.purpose?.trim() || beforeChapter.summary,
       exclusiveEvent: beforeChapter.exclusiveEvent,
       endingState: beforeChapter.endingState,
       nextChapterEntryState: beforeChapter.nextChapterEntryState,
@@ -511,7 +512,7 @@ export function buildVolumeDiff(
             id: beforeChapter.id,
             order: beforeChapter.chapterOrder,
             title: beforeChapter.title,
-            expectation: beforeChapter.summary,
+            expectation: beforeChapter.purpose?.trim() || beforeChapter.summary,
             exclusiveEvent: beforeChapter.exclusiveEvent,
             endingState: beforeChapter.endingState,
             nextChapterEntryState: beforeChapter.nextChapterEntryState,

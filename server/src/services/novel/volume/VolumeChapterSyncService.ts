@@ -7,9 +7,11 @@ import type {
 import {
   assessChapterExecutionContractShape,
   formatChapterTaskSheetQualityFailure,
+  shouldEnforceExecutionContractSyncGate,
 } from "@ai-novel/shared/types/chapterTaskSheetQuality";
 import { prisma } from "../../../db/prisma";
 import type { VolumeUpdateReason } from "../../../events";
+import { resolveChapterExpectationFromPlan } from "./chapterPlanningFieldMapping";
 import {
   buildVolumeSyncPlan,
   hasPayoffLedgerRelevantPlanChanges,
@@ -112,7 +114,7 @@ export class VolumeChapterSyncService {
             title: item.chapter.title,
             order: item.chapter.chapterOrder,
             content: "",
-            expectation: item.chapter.purpose?.trim() || item.chapter.summary,
+            expectation: resolveChapterExpectationFromPlan(item.chapter) || null,
             targetWordCount: item.chapter.targetWordCount ?? null,
             conflictLevel: item.chapter.conflictLevel ?? null,
             revealLevel: item.chapter.revealLevel ?? null,
@@ -131,7 +133,7 @@ export class VolumeChapterSyncService {
           data: {
             title: item.chapter.title,
             order: item.chapter.chapterOrder,
-            expectation: item.chapter.purpose?.trim() || item.chapter.summary,
+            expectation: resolveChapterExpectationFromPlan(item.chapter) || null,
             targetWordCount: item.chapter.targetWordCount ?? null,
             conflictLevel: item.chapter.conflictLevel ?? null,
             revealLevel: item.chapter.revealLevel ?? null,
@@ -195,8 +197,9 @@ export class VolumeChapterSyncService {
         ) {
           continue;
         }
-        const hasExecutionArtifact = Boolean(chapter.taskSheet?.trim() || chapter.sceneCards?.trim());
-        if (!hasExecutionArtifact) {
+        // Outline-imported taskSheet notes are not full execution contracts.
+        // Only sceneCards trigger the hard sync gate; incomplete contracts still block.
+        if (!shouldEnforceExecutionContractSyncGate(chapter)) {
           continue;
         }
         const result = assessChapterExecutionContractShape({

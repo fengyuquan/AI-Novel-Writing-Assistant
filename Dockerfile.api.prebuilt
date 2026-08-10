@@ -1,0 +1,79 @@
+# 云主机 4G 内存不够跑 tsc：本机先 build，这里只装 Linux 依赖并拷贝 dist
+ARG NODE_IMAGE=node:22-bookworm-slim
+FROM ${NODE_IMAGE} AS base
+ENV PNPM_HOME=/pnpm
+ENV PATH=${PNPM_HOME}:${PATH}
+ENV NODE_ENV=development
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+USER root
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e 's|https://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|http://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|https://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        -e 's|http://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e 's|https://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|http://deb.debian.org|http://mirrors.aliyun.com|g' \
+        -e 's|https://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        -e 's|http://security.debian.org|http://mirrors.aliyun.com/debian-security|g' \
+        /etc/apt/sources.list; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates python3 make g++ openssl; \
+    rm -rf /var/lib/apt/lists/*; \
+    corepack enable
+
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json .npmrc ./
+COPY client/package.json ./client/package.json
+COPY server/package.json ./server/package.json
+COPY shared/package.json ./shared/package.json
+COPY cli/package.json ./cli/package.json
+COPY desktop/package.json ./desktop/package.json
+COPY site/package.json ./site/package.json
+ENV AI_NOVEL_DATABASE_MODE=sqlite
+ENV DATABASE_URL=file:/tmp/build-dev.db
+ENV NODE_OPTIONS=--max-old-space-size=1536
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS release
+WORKDIR /app
+ENV AI_NOVEL_DATABASE_MODE=sqlite
+ENV DATABASE_URL=file:/tmp/build-dev.db
+COPY shared/package.json shared/tsconfig.json ./shared/
+COPY shared/dist ./shared/dist
+COPY server/package.json server/tsconfig.json server/prisma.config.ts ./server/
+COPY server/dist ./server/dist
+COPY server/src/prisma ./server/src/prisma
+COPY server/src/config/database.ts ./server/src/config/database.ts
+COPY --chown=node:node infra/deploy/api-entrypoint-sqlite.sh /app/api-entrypoint-sqlite.sh
+# 不要 chown -R /app（node_modules 极大，4G/慢盘上能卡很久）
+RUN pnpm --filter @ai-novel/server prisma:generate \
+    && mkdir -p /app/server/data /app/server/storage/generated-images /app/.logs /app/node_modules/.bin \
+    && printf '%s\n' '#!/bin/sh' 'exec node /app/server/node_modules/prisma/build/index.js --config /app/server/prisma.config.ts "$@"' > /app/node_modules/.bin/prisma \
+    && chmod +x /app/node_modules/.bin/prisma /app/api-entrypoint-sqlite.sh \
+    && chown -R node:node /app/server/data /app/server/storage /app/.logs /app/api-entrypoint-sqlite.sh /app/node_modules/.bin/prisma
+
+# 复用 base（已含 openssl/ca-certificates），避免 Prisma 在精简 runtime 里缺 libssl
+FROM base AS runtime
+USER root
+WORKDIR /app
+ENV NODE_ENV=production
+ENV AI_NOVEL_DATABASE_MODE=sqlite
+ENV DATABASE_URL=file:/app/server/data/dev.db
+ENV SQLITE_DATABASE_PATH=/app/server/data/dev.db
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV RAG_ENABLED=false
+# 不做整树 chown，避免导出镜像阶段再次扫完整 node_modules
+COPY --from=release /app /app
+USER node
+EXPOSE 3000
+ENTRYPOINT ["/app/api-entrypoint-sqlite.sh"]

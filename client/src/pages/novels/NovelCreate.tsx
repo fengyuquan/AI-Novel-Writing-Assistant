@@ -171,12 +171,17 @@ export default function NovelCreate() {
         <div className="max-w-3xl">
           <h1 className="text-3xl font-semibold tracking-normal text-foreground">创建小说项目</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            推荐先让 AI 自动导演从一句灵感整理方向、世界、角色和章节准备。需要完全手动填写时，也可以继续使用下方表单。
+            推荐先让 AI 自动导演从一句灵感整理方向、世界、角色和章节准备。已有完整章节大纲时，可直接从大纲开书；需要完全手动填写时，继续使用下方表单。
           </p>
         </div>
-        <Button type="button" asChild className="shrink-0">
-          <Link to="/novels/auto-director">AI 自动导演开书</Link>
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" asChild>
+            <Link to="/novels/auto-director">AI 自动导演开书</Link>
+          </Button>
+          <Button type="button" asChild variant="outline">
+            <Link to="/novels/create-from-outline">从大纲开书</Link>
+          </Button>
+        </div>
       </section>
 
       <section className="space-y-4">

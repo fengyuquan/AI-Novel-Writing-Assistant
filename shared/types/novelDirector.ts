@@ -79,6 +79,9 @@ export const DIRECTOR_CANDIDATE_SETUP_STEPS = [
   },
 ] as const;
 
+/** 每一轮自动导演方向候选的固定套数。 */
+export const DIRECTOR_CANDIDATE_BATCH_COUNT = 5;
+
 export type DirectorCandidateSetupStepKey = typeof DIRECTOR_CANDIDATE_SETUP_STEPS[number]["key"];
 
 export const DIRECTOR_RUN_MODES = [

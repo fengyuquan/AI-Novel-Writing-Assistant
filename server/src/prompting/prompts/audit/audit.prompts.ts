@@ -18,7 +18,7 @@ const AUDIT_CHAPTER_EXAMPLE = {
     {
       severity: "medium",
       category: "pacing",
-      evidence: "中段连续两段都在解释处境，但没有新增推进。",
+      evidence: "他在走廊里反复核对账本，把每一个数字又重算了一遍；中段连续解释处境，缺少新推进。",
       fixSuggestion: "压缩第二段解释，把信息并入动作或对话里。",
     },
   ],
@@ -32,7 +32,7 @@ const AUDIT_CHAPTER_EXAMPLE = {
           severity: "medium",
           code: "plot_escalation_soft",
           description: "主线冲突已经出现，但代价抬升还不够。",
-          evidence: "帮派威胁出现后，主角很快脱身，压力没有持续停留。",
+          evidence: "「你最好识相点。」他说完便转身离开；威胁出现后压力没有持续停留。",
           fixSuggestion: "补一个无法立刻摆脱的代价或后续追踪后果。",
         },
       ],
@@ -54,7 +54,7 @@ const LIGHT_AUDIT_EXAMPLE = {
     {
       severity: "medium",
       category: "pacing",
-      evidence: "中段连续两段都在解释现状，信息重复且没有新的推进。",
+      evidence: "窗外雨还在下，他却只是把杯子转了又转；中段说明重复，缺少新推进。",
       fixSuggestion: "压缩说明段，把关键信息并入动作或对话里。",
     },
   ],
@@ -109,7 +109,7 @@ export const auditChapterLightPrompt: PromptAsset<AuditChapterPromptInput, z.inf
       key: "audit.reportStyle",
       label: "轻审校报告表达",
       description: "调整轻审校结果的表达侧重和判断偏向。",
-      default: "问题必须具体且可执行，默认优先让章节继续推进。",
+      default: "问题必须具体且可执行；evidence 先写可在正文定位的原文短摘录（8-40字），再补一句现象说明；默认优先让章节继续推进。",
       maxLength: 500,
     },
     {
@@ -130,7 +130,7 @@ export const auditChapterLightPrompt: PromptAsset<AuditChapterPromptInput, z.inf
   outputSchema: lightAuditOutputSchema,
   render: (input, context) => {
     const reportStyle = context.slots?.text("audit.reportStyle")
-      ?? "问题必须具体且可执行，默认优先让章节继续推进。";
+      ?? "问题必须具体且可执行；evidence 先写可在正文定位的原文短摘录（8-40字），再补一句现象说明；默认优先让章节继续推进。";
     return [
     new SystemMessage([
       "你是中文长篇小说章节轻审校助手。",
@@ -142,8 +142,9 @@ export const auditChapterLightPrompt: PromptAsset<AuditChapterPromptInput, z.inf
       "1. 默认优先让章节继续推进，不要把普通质量建议升级成阻塞。",
       "2. 只有在明显结构异常、严重偏离章节任务、关键信息断裂、长度明显失控时，才建议 full_audit。",
       "3. issues 报告要求：" + reportStyle,
-      "4. continueRecommendation 只能是 continue、suggest_repair、full_audit。",
-      "5. shouldRunFullAudit 只有在确实需要完整重审校时才设为 true。",
+      "4. evidence 必须包含正文里真实出现过的连续短摘录，方便编辑器定位；不要只写抽象现象。",
+      "5. continueRecommendation 只能是 continue、suggest_repair、full_audit。",
+      "6. shouldRunFullAudit 只有在确实需要完整重审校时才设为 true。",
     ].join("\n")),
     new HumanMessage([
       `小说：${input.novelTitle}`,
@@ -205,7 +206,7 @@ export const auditChapterPrompt: PromptAsset<AuditChapterPromptInput, z.infer<ty
       description: "调整完整审校的报告表达方式和标准。",
       riskLevel: "low",
       maxLength: 600,
-      defaultValue: "所有问题都必须具体，evidence 指向明确现象，fixSuggestion 必须可执行。",
+      defaultValue: "所有问题都必须具体；evidence 先写可在正文定位的原文短摘录（8-40字），再补一句现象说明；fixSuggestion 必须可执行。",
     },
   ],
   slots: [
@@ -214,7 +215,7 @@ export const auditChapterPrompt: PromptAsset<AuditChapterPromptInput, z.infer<ty
       key: "audit.reportStyle",
       label: "完整审校报告表达",
       description: "调整完整审校的报告表达方式和标准。",
-      default: "所有问题都必须具体，evidence 指向明确现象，fixSuggestion 必须可执行。",
+      default: "所有问题都必须具体；evidence 先写可在正文定位的原文短摘录（8-40字），再补一句现象说明；fixSuggestion 必须可执行。",
       maxLength: 600,
     },
     {
@@ -235,7 +236,7 @@ export const auditChapterPrompt: PromptAsset<AuditChapterPromptInput, z.infer<ty
   outputSchema: fullAuditOutputSchema,
   render: (input, context) => {
     const reportStyle = context.slots?.text("audit.reportStyle")
-      ?? "所有问题都必须具体，evidence 指向明确现象，fixSuggestion 必须可执行。";
+      ?? "所有问题都必须具体；evidence 先写可在正文定位的原文短摘录（8-40字），再补一句现象说明；fixSuggestion 必须可执行。";
     return [
     new SystemMessage([
       "repetition scoring: 0 means heavily repetitive, 100 means repetition is well controlled; higher is better.",
@@ -252,8 +253,9 @@ export const auditChapterPrompt: PromptAsset<AuditChapterPromptInput, z.infer<ty
       "审校原则：",
       "1. 只根据给定正文和上下文判断，不得脑补未提供的剧情、设定或作者意图。",
       "2. " + reportStyle,
-      "3. score、issues、auditReports 三部分必须彼此一致，不能互相矛盾。",
-      "4. requestedTypes 中要求的类型必须全部覆盖；即使问题不明显，也要给出简短结论。",
+      "3. evidence 必须包含正文里真实出现过的连续短摘录，方便编辑器「定位到正文」；不要只写抽象现象。",
+      "4. score、issues、auditReports 三部分必须彼此一致，不能互相矛盾。",
+      "5. requestedTypes 中要求的类型必须全部覆盖；即使问题不明显，也要给出简短结论。",
       "",
       "评分维度：",
       "1. coherence：连贯性、因果与信息自洽。",

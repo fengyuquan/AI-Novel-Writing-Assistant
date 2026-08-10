@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type {
   ChapterEditorAiRevisionIntent,
+  ChapterEditorAiWritingDetectIssue,
+  ChapterEditorAiWritingDetectRequest,
+  ChapterEditorAiWritingDetectResponse,
   ChapterEditorMacroContext,
   ChapterEditorAiRevisionRequest,
   ChapterEditorAiRevisionResponse,
@@ -12,6 +15,10 @@ import type {
 } from "@ai-novel/shared/types/novel";
 import { runStructuredPrompt } from "../../../prompting/core/promptRunner";
 import {
+  chapterEditorAiWritingDetectPrompt,
+  type ChapterEditorAiWritingDetectPromptInput,
+} from "../../../prompting/prompts/novel/chapterEditor/aiWritingDetect.prompts";
+import {
   chapterEditorRewriteCandidatesPrompt,
   type ChapterEditorRewriteCandidatesPromptInput,
 } from "../../../prompting/prompts/novel/chapterEditor/rewriteCandidates.prompts";
@@ -19,6 +26,7 @@ import {
   chapterEditorUserIntentPrompt,
   type ChapterEditorUserIntentPromptInput,
 } from "../../../prompting/prompts/novel/chapterEditor/userIntent.prompts";
+import { detectProseQuality } from "../runtime/proseQuality/ProseQualityDetector";
 import { buildChapterEditorDiffChunks } from "./chapterEditorDiff";
 import { ChapterEditorWorkspaceService } from "./ChapterEditorWorkspaceService";
 import {
@@ -108,11 +116,100 @@ function resolveSelectionTargetRange(content: string, targetRange?: ChapterEdito
   };
 }
 
+function mapDeterministicFindings(content: string): ChapterEditorAiWritingDetectIssue[] {
+  const report = detectProseQuality(content);
+  const aiRelatedCodes = new Set([
+    "prose_negative_flip",
+    "prose_ai_self_reference",
+    "prose_placeholder_leak",
+    "prose_engineering_term_leak",
+    "prose_verbatim_repeat",
+  ]);
+  return report.findings
+    .filter((finding) => aiRelatedCodes.has(finding.code))
+    .slice(0, 6)
+    .map((finding) => ({
+      severity: finding.severity,
+      code: finding.code,
+      description: finding.message,
+      evidence: finding.excerpt.slice(0, 240),
+      fixSuggestion: finding.fixSuggestion,
+      source: "deterministic" as const,
+    }));
+}
+
+function mergeAiWritingIssues(
+  llmIssues: ChapterEditorAiWritingDetectIssue[],
+  deterministicIssues: ChapterEditorAiWritingDetectIssue[],
+): ChapterEditorAiWritingDetectIssue[] {
+  const merged: ChapterEditorAiWritingDetectIssue[] = [];
+  const seen = new Set<string>();
+  for (const issue of [...llmIssues, ...deterministicIssues]) {
+    const key = `${issue.code}:${issue.evidence.slice(0, 32)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(issue);
+    if (merged.length >= 12) {
+      break;
+    }
+  }
+  return merged;
+}
+
 export class NovelChapterEditorService {
   constructor(
     private readonly workspaceService: ChapterEditorWorkspaceService = new ChapterEditorWorkspaceService(),
     private readonly promptRunner: typeof runStructuredPrompt = runStructuredPrompt,
   ) {}
+
+  async detectAiWriting(
+    novelId: string,
+    chapterId: string,
+    input: ChapterEditorAiWritingDetectRequest = {},
+  ): Promise<ChapterEditorAiWritingDetectResponse> {
+    const context = await this.workspaceService.loadContext(novelId, chapterId);
+    const content = normalizeChapterContent(input.content ?? context.chapter.content ?? "");
+    if (!content.trim()) {
+      throw new Error("当前章节正文为空，无法检测 AI 写法。");
+    }
+
+    const includeDeterministic = input.includeDeterministic !== false;
+    const deterministicIssues = includeDeterministic ? mapDeterministicFindings(content) : [];
+
+    const result = await this.promptRunner({
+      asset: chapterEditorAiWritingDetectPrompt,
+      promptInput: {
+        novelTitle: context.novel.title?.trim() || "未命名小说",
+        chapterTitle: context.chapter.title?.trim() || `第 ${context.chapter.order} 章`,
+        content,
+        styleSummary: context.styleSummary || null,
+      } satisfies ChapterEditorAiWritingDetectPromptInput,
+      options: {
+        provider: input.provider ?? "deepseek",
+        model: input.model,
+        temperature: input.temperature ?? 0.15,
+      },
+    });
+
+    const llmIssues: ChapterEditorAiWritingDetectIssue[] = (result.output.issues ?? []).map((issue) => ({
+      severity: issue.severity,
+      code: issue.code,
+      description: issue.description,
+      evidence: issue.evidence,
+      fixSuggestion: issue.fixSuggestion,
+      source: "llm" as const,
+    }));
+
+    const issues = mergeAiWritingIssues(llmIssues, deterministicIssues);
+    return {
+      riskScore: Math.max(0, Math.min(100, Math.round(result.output.riskScore))),
+      naturalnessScore: Math.max(0, Math.min(100, Math.round(result.output.naturalnessScore))),
+      summary: result.output.summary.trim(),
+      issues,
+    };
+  }
 
   async previewAiRevision(
     novelId: string,

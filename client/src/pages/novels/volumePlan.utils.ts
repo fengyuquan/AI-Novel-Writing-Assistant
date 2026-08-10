@@ -258,7 +258,10 @@ function compareNumber(a: number | null | undefined, b: number | null | undefine
 function getChangedFields(existing: ExistingOutlineChapter, chapter: VolumeChapterPlan, action: "update" | "move"): string[] {
   const changed: string[] = action === "move" ? ["章节顺序"] : [];
   if (!compareText(existing.title, chapter.title)) changed.push("标题");
-  if (!compareText(existing.expectation, chapter.summary)) changed.push("摘要");
+  // Chapter.expectation stores execution goal (purpose), not planning summary.
+  if (!compareText(existing.expectation, chapter.purpose?.trim() || chapter.summary)) {
+    changed.push("章节目标");
+  }
   if (!compareNumber(existing.targetWordCount, chapter.targetWordCount)) changed.push("目标字数");
   if (!compareNumber(existing.conflictLevel, chapter.conflictLevel)) changed.push("冲突等级");
   if (!compareNumber(existing.revealLevel, chapter.revealLevel)) changed.push("揭露等级");
