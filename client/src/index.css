@@ -356,7 +356,9 @@ body {
   .mobile-page-creative-hub,
   .mobile-page-settings,
   .mobile-page-home,
-  .mobile-page-tasks {
+  .mobile-page-tasks,
+  .mobile-page-novels,
+  .mobile-page-follow-ups {
     width: 100%;
     max-width: 100%;
   }
@@ -365,7 +367,9 @@ body {
   .mobile-page-settings,
   .mobile-page-home,
   .mobile-page-tasks,
-  .mobile-page-chapter-edit {
+  .mobile-page-chapter-edit,
+  .mobile-page-novels,
+  .mobile-page-follow-ups {
     overflow-x: hidden;
   }
 
@@ -583,12 +587,12 @@ body {
   }
 
   .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid.grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
   }
 
   .mobile-site-main.mobile-route-auto-director-follow-ups .auto-director-follow-up-filter-grid.grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid button {
@@ -603,10 +607,6 @@ body {
   .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid .text-xl {
     font-size: 1rem;
     line-height: 1.25rem;
-  }
-
-  .mobile-route-auto-director-follow-ups .auto-director-follow-up-section-grid .text-xs {
-    display: none;
   }
 
   .mobile-route-creative-hub .rounded-xl.border.bg-card .rounded-xl.border.bg-card,

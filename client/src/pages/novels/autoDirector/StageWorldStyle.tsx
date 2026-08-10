@@ -141,9 +141,15 @@ export default function StageWorldStyle({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-between">
-        <Button type="button" variant="ghost" onClick={onBack}>返回起始设置</Button>
-        <Button type="button" onClick={onConfirm}>确认世界与写法</Button>
+      <div className={AUTO_DIRECTOR_MOBILE_CLASSES.stageStickyActionBar}>
+        <div className={AUTO_DIRECTOR_MOBILE_CLASSES.stageActionRow}>
+          <Button type="button" variant="ghost" className={`h-11 ${AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction}`} onClick={onBack}>
+            返回起始设置
+          </Button>
+          <Button type="button" className={`h-11 min-h-11 text-base ${AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction}`} onClick={onConfirm}>
+            确认世界与写法
+          </Button>
+        </div>
       </div>
     </section>
   );

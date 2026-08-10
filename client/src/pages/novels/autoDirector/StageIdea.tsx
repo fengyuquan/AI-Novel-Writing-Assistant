@@ -127,7 +127,7 @@ export default function StageIdea({
   };
 
   return (
-    <section className="mx-auto flex min-h-[calc(100vh-180px)] w-full max-w-4xl flex-col items-center justify-center px-1 py-10 sm:py-16">
+    <section className="mx-auto flex w-full max-w-4xl flex-col items-center justify-start px-1 py-6 sm:min-h-[calc(100vh-180px)] sm:justify-center sm:py-16">
       <motion.div
         initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -229,29 +229,31 @@ export default function StageIdea({
             </div>
           ) : null}
         </div>
-        <div className="flex flex-col gap-2 pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
-            onClick={handleShowInspirations}
-            disabled={isGeneratingIdeaInspirations}
-          >
-            <Sparkles className="h-4 w-4" />
-            {isGeneratingIdeaInspirations ? "正在准备几个开头..." : "没有想法？看几个开头"}
-          </button>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="sticky bottom-0 z-20 -mx-1 mt-3 border-t border-border/60 bg-background/95 px-1 py-3 backdrop-blur pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:pt-3 sm:backdrop-blur-none">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
-              className="text-sm text-muted-foreground transition hover:text-foreground disabled:opacity-50"
-              onClick={onQuickGenerate}
-              disabled={!canContinue || isGenerating}
+              className="inline-flex h-11 items-center justify-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+              onClick={handleShowInspirations}
+              disabled={isGeneratingIdeaInspirations}
             >
-              {isGenerating ? "生成中..." : "用默认设置直接生成方向"}
+              <Sparkles className="h-4 w-4" />
+              {isGeneratingIdeaInspirations ? "正在准备几个开头..." : "没有想法？看几个开头"}
             </button>
-            <Button type="button" onClick={onContinue} disabled={!canContinue}>
-              继续完善设定
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                className="h-11 text-sm text-muted-foreground transition hover:text-foreground disabled:opacity-50"
+                onClick={onQuickGenerate}
+                disabled={!canContinue || isGenerating}
+              >
+                {isGenerating ? "生成中..." : "用默认设置直接生成方向"}
+              </button>
+              <Button type="button" className="h-11 min-h-11 w-full text-base sm:w-auto" onClick={onContinue} disabled={!canContinue}>
+                继续完善设定
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </motion.div>

@@ -33,7 +33,16 @@ import { AutoDirectorFollowUpOverviewCards } from "./components/AutoDirectorFoll
 import { reconcileSelectedTaskIds } from "./selectionState";
 import { resolveFollowUpOverviewPresentation } from "./followUpPresentation";
 import { toast } from "@/components/ui/toast";
+import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   WorkspaceHeader,
   WorkspaceNextAction,
@@ -118,6 +127,7 @@ function parseEnumParam<T extends string>(value: string | null, candidates: read
 export default function AutoDirectorFollowUpCenterPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const isMobileViewport = useIsMobileViewport();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDirectorTaskIds, setSelectedDirectorTaskIds] = useState<string[]>([]);
 
@@ -191,7 +201,8 @@ export default function AutoDirectorFollowUpCenterPage() {
         return;
       }
     }
-    if (items.length === 0) {
+    // On phone, keep list-first: do not auto-open the first task detail sheet.
+    if (isMobileViewport || items.length === 0) {
       return;
     }
     const fallback = items[0];
@@ -201,7 +212,7 @@ export default function AutoDirectorFollowUpCenterPage() {
       next.delete("taskId");
       return next;
     }, { replace: true });
-  }, [items, searchParams, selectedDirectorTaskId, setSearchParams]);
+  }, [isMobileViewport, items, searchParams, selectedDirectorTaskId, setSearchParams]);
 
   useEffect(() => {
     setSelectedDirectorTaskIds((current) => reconcileSelectedTaskIds(current, items));
@@ -481,45 +492,109 @@ export default function AutoDirectorFollowUpCenterPage() {
         onSectionChange={handleSectionChange}
       />
 
-      <div className={AUTO_DIRECTOR_MOBILE_CLASSES.followUpMasterDetailGrid}>
-        <AutoDirectorFollowUpListPanel
-          items={items}
-          pagination={listQuery.data?.data?.pagination ?? null}
-          filters={listQuery.data?.data?.availableFilters ?? null}
-          activeReason={reason}
-          activeSection={section}
-          activeStatus={status}
-          activeSupportsBatch={supportsBatch}
-          selectedTaskId={selectedDirectorTaskId}
-          selectedTaskIds={selectedDirectorTaskIds}
-          loading={listQuery.isLoading}
-          errorMessage={listErrorMessage}
-          actionLoading={actionMutation.isPending || batchMutation.isPending}
-          onSelectTask={handleSelectTask}
-          onFilterChange={handleFilterChange}
-          onToggleSelected={handleToggleSelected}
-          onRetry={() => void listQuery.refetch()}
-          onPageChange={(nextPage: number) => {
-            setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              next.set("page", String(nextPage));
-              return next;
-            });
-          }}
-        />
+      {isMobileViewport ? (
+        <>
+          <AutoDirectorFollowUpListPanel
+            items={items}
+            pagination={listQuery.data?.data?.pagination ?? null}
+            filters={listQuery.data?.data?.availableFilters ?? null}
+            activeReason={reason}
+            activeSection={section}
+            activeStatus={status}
+            activeSupportsBatch={supportsBatch}
+            selectedTaskId={selectedDirectorTaskId}
+            selectedTaskIds={selectedDirectorTaskIds}
+            loading={listQuery.isLoading}
+            errorMessage={listErrorMessage}
+            actionLoading={actionMutation.isPending || batchMutation.isPending}
+            onSelectTask={handleSelectTask}
+            onFilterChange={handleFilterChange}
+            onToggleSelected={handleToggleSelected}
+            onRetry={() => void listQuery.refetch()}
+            onPageChange={(nextPage: number) => {
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("page", String(nextPage));
+                return next;
+              });
+            }}
+          />
+          <Sheet
+            open={Boolean(selectedDirectorTaskId)}
+            onOpenChange={(open) => {
+              if (open) {
+                return;
+              }
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("directorTaskId");
+                next.delete("taskId");
+                return next;
+              });
+            }}
+          >
+            <SheetContent side="bottom" className="flex max-h-[85dvh] flex-col gap-0 p-0">
+              <SheetHeader>
+                <SheetTitle>跟进详情</SheetTitle>
+                <SheetDescription>查看原因、影响范围和可执行动作。</SheetDescription>
+              </SheetHeader>
+              <SheetBody className="px-3 pb-4">
+                <AutoDirectorFollowUpDetailPanel
+                  detail={detailQuery.data?.data ?? null}
+                  selectedItem={items.find((item) => item.directorTaskId === selectedDirectorTaskId) ?? null}
+                  loading={detailQuery.isLoading || revalidationMutation.isPending}
+                  errorMessage={detailErrorMessage}
+                  actionLoading={actionMutation.isPending || revalidationMutation.isPending}
+                  onExecuteAction={handleExecuteAction}
+                  onRefreshValidation={handleRefreshValidation}
+                  onSafeFix={handleSafeFix}
+                  onRetry={() => void detailQuery.refetch()}
+                />
+              </SheetBody>
+            </SheetContent>
+          </Sheet>
+        </>
+      ) : (
+        <div className={AUTO_DIRECTOR_MOBILE_CLASSES.followUpMasterDetailGrid}>
+          <AutoDirectorFollowUpListPanel
+            items={items}
+            pagination={listQuery.data?.data?.pagination ?? null}
+            filters={listQuery.data?.data?.availableFilters ?? null}
+            activeReason={reason}
+            activeSection={section}
+            activeStatus={status}
+            activeSupportsBatch={supportsBatch}
+            selectedTaskId={selectedDirectorTaskId}
+            selectedTaskIds={selectedDirectorTaskIds}
+            loading={listQuery.isLoading}
+            errorMessage={listErrorMessage}
+            actionLoading={actionMutation.isPending || batchMutation.isPending}
+            onSelectTask={handleSelectTask}
+            onFilterChange={handleFilterChange}
+            onToggleSelected={handleToggleSelected}
+            onRetry={() => void listQuery.refetch()}
+            onPageChange={(nextPage: number) => {
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("page", String(nextPage));
+                return next;
+              });
+            }}
+          />
 
-        <AutoDirectorFollowUpDetailPanel
-          detail={detailQuery.data?.data ?? null}
-          selectedItem={items.find((item) => item.directorTaskId === selectedDirectorTaskId) ?? null}
-          loading={detailQuery.isLoading || revalidationMutation.isPending}
-          errorMessage={detailErrorMessage}
-          actionLoading={actionMutation.isPending || revalidationMutation.isPending}
-          onExecuteAction={handleExecuteAction}
-          onRefreshValidation={handleRefreshValidation}
-          onSafeFix={handleSafeFix}
-          onRetry={() => void detailQuery.refetch()}
-        />
-      </div>
+          <AutoDirectorFollowUpDetailPanel
+            detail={detailQuery.data?.data ?? null}
+            selectedItem={items.find((item) => item.directorTaskId === selectedDirectorTaskId) ?? null}
+            loading={detailQuery.isLoading || revalidationMutation.isPending}
+            errorMessage={detailErrorMessage}
+            actionLoading={actionMutation.isPending || revalidationMutation.isPending}
+            onExecuteAction={handleExecuteAction}
+            onRefreshValidation={handleRefreshValidation}
+            onSafeFix={handleSafeFix}
+            onRetry={() => void detailQuery.refetch()}
+          />
+        </div>
+      )}
 
       <AutoDirectorFollowUpBatchBar
         selectedItems={selectedItems}

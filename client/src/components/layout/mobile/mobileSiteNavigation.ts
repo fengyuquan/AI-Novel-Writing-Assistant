@@ -24,6 +24,7 @@ export const MOBILE_ROUTE_PATTERNS: MobileRoutePattern[] = [
   { key: "help", pattern: /^\/help\/?$/, title: "创作向导", group: "more" },
   { key: "novels", pattern: /^\/novels\/?$/, title: "小说", group: "novels" },
   { key: "novel-create", pattern: /^\/novels\/create\/?$/, title: "创建小说", group: "novels" },
+  { key: "auto-director-create", pattern: /^\/novels\/auto-director\/?$/, title: "自动导演开书", group: "novels" },
   { key: "novel-preview", pattern: /^\/novels\/[^/]+\/preview\/?$/, title: "小说预览", group: "novels" },
   { key: "novel-edit", pattern: /^\/novels\/[^/]+\/edit\/?$/, title: "小说工作区", group: "novels" },
   { key: "chapter-edit", pattern: /^\/novels\/[^/]+\/chapters\/[^/]+\/?$/, title: "章节正文", group: "novels" },

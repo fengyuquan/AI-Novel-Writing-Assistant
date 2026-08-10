@@ -280,7 +280,7 @@ export default function NovelList() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="mobile-page-novels space-y-5 overflow-x-hidden">
       <NovelListHeader
         page={page}
         totalPages={totalPages}
@@ -327,7 +327,7 @@ export default function NovelList() {
               {continueNovels.length > 0 ? (
                 <section className="space-y-3">
                   <h2 className="text-lg font-semibold">继续创作</h2>
-                  <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3">
+                  <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(280px,1fr))]">
                     {continueNovels.map((novel) => (
                       <NovelContinueCard key={`continue-${novel.id}`} novel={novel} onManageCover={setCoverNovelId} />
                     ))}
@@ -336,7 +336,7 @@ export default function NovelList() {
               ) : null}
               <section className="space-y-3">
                 <h2 className="text-lg font-semibold">我的作品</h2>
-                <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(210px,1fr))] gap-4">
+                <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(210px,1fr))]">
                   {novels.filter((novel) => !continueNovels.some((item) => item.id === novel.id)).map((novel) => (
                     <NovelShelfCard key={novel.id} novel={novel} onManageCover={setCoverNovelId} onDownload={downloadNovelMutation.mutate} onDelete={handleDelete} />
                   ))}
@@ -344,7 +344,7 @@ export default function NovelList() {
               </section>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {novels.map((novel) => (
                 <NovelProjectCard
                   key={novel.id}

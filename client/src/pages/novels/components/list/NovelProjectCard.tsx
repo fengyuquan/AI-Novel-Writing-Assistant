@@ -119,8 +119,8 @@ export function NovelProjectCard(props: {
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-border/70">
             <div className={cn("h-full rounded-full transition-[width] duration-500", progressToneClass)} style={{ width: `${workflow.progress}%` }} />
           </div>
-          <div className="mt-2 h-10 overflow-hidden opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-            <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+          <div className="mt-2 text-xs leading-5 text-muted-foreground">
+            <p className="line-clamp-2">
               {workflow.description}{workflow.lastHealthyStage ? ` 最近完成：${workflow.lastHealthyStage}` : ""}
             </p>
           </div>
@@ -137,13 +137,11 @@ export function NovelProjectCard(props: {
           ))}
         </div>
 
-        <div className="h-5 overflow-hidden opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-          <div className="flex flex-nowrap gap-x-4 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
-            <span>项目：{formatProgressStatus(props.novel.projectStatus)}</span>
-            <span>主线：{formatProgressStatus(props.novel.storylineStatus)}</span>
-            <span>大纲：{formatProgressStatus(props.novel.outlineStatus)}</span>
-            <span>Token：{formatTokenCount(props.novel.tokenUsage?.totalTokens)}</span>
-          </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span>项目：{formatProgressStatus(props.novel.projectStatus)}</span>
+          <span>主线：{formatProgressStatus(props.novel.storylineStatus)}</span>
+          <span>大纲：{formatProgressStatus(props.novel.outlineStatus)}</span>
+          <span>Token：{formatTokenCount(props.novel.tokenUsage?.totalTokens)}</span>
         </div>
 
         <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/55 pt-3">
