@@ -519,8 +519,8 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   if (isMobileViewport) {
     return (
-      <div className="mobile-page-chapter-edit space-y-3 overflow-x-hidden px-3 pb-28 pt-3">
-        <header className="sticky top-0 z-30 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3 backdrop-blur">
+      <div className="mobile-page-chapter-edit w-full max-w-full space-y-3 overflow-x-hidden px-3 pb-28 pt-3">
+        <header className="sticky top-0 z-30 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-start gap-2">
               <MobileNovelWorkspaceNavMenu

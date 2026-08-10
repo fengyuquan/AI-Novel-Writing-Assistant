@@ -298,6 +298,14 @@ body {
     overflow: hidden;
   }
 
+  [data-vaul-drawer][data-vaul-drawer-direction="left"],
+  [data-vaul-drawer][data-vaul-drawer-direction="right"] {
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+  }
+
   [role="dialog"] .grid,
   .mobile-site-main .grid {
     max-width: 100%;

@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { ArrowDownToLine, ArrowUpToLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -73,7 +73,6 @@ function pickActiveMetrics(
     return windowMetrics;
   }
   const elementMetrics = getElementMetrics(element);
-  // Prefer the container only when it actually scrolls; otherwise fall back to page scroll.
   if (elementMetrics.maxScroll > 96) {
     return elementMetrics;
   }
@@ -88,58 +87,61 @@ export default function MobileScrollEdgeButtons({
 }: MobileScrollEdgeButtonsProps) {
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
+  const frameRef = useRef(0);
+  const lastStateRef = useRef({ up: false, down: false });
 
   useEffect(() => {
     let attachedElement: HTMLElement | null = null;
-    let frame = 0;
 
-    const update = () => {
+    const apply = () => {
+      frameRef.current = 0;
       const metrics = pickActiveMetrics(scrollContainerRef, scrollContainerSelector);
-      setCanScrollUp(metrics.maxScroll > 96 && metrics.scrollTop > 48);
-      setCanScrollDown(metrics.maxScroll > 96 && metrics.scrollTop < metrics.maxScroll - 48);
+      const nextUp = metrics.maxScroll > 96 && metrics.scrollTop > 48;
+      const nextDown = metrics.maxScroll > 96 && metrics.scrollTop < metrics.maxScroll - 48;
+      if (lastStateRef.current.up === nextUp && lastStateRef.current.down === nextDown) {
+        return;
+      }
+      lastStateRef.current = { up: nextUp, down: nextDown };
+      setCanScrollUp(nextUp);
+      setCanScrollDown(nextDown);
+    };
+
+    const schedule = () => {
+      if (frameRef.current) {
+        return;
+      }
+      frameRef.current = window.requestAnimationFrame(apply);
     };
 
     const attach = () => {
       const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
       if (attachedElement !== element) {
         if (attachedElement) {
-          attachedElement.removeEventListener("scroll", update);
+          attachedElement.removeEventListener("scroll", schedule);
         }
         attachedElement = element;
         if (attachedElement) {
-          attachedElement.addEventListener("scroll", update, { passive: true });
+          attachedElement.addEventListener("scroll", schedule, { passive: true });
         }
       }
-      update();
+      schedule();
     };
 
     attach();
-    window.addEventListener("scroll", update, { passive: true });
+    // Retry once after paint in case the editor mounts late.
+    const retryTimer = window.setTimeout(attach, 300);
+    window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", attach);
-    const resizeObserver = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(() => update())
-      : null;
-    if (resizeObserver) {
-      resizeObserver.observe(document.documentElement);
-      const element = resolveScrollTarget(scrollContainerRef, scrollContainerSelector);
-      if (element) {
-        resizeObserver.observe(element);
-      }
-    }
-    const observer = new MutationObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(attach);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", update);
+      window.clearTimeout(retryTimer);
+      if (frameRef.current) {
+        window.cancelAnimationFrame(frameRef.current);
+      }
+      window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", attach);
-      resizeObserver?.disconnect();
-      observer.disconnect();
       if (attachedElement) {
-        attachedElement.removeEventListener("scroll", update);
+        attachedElement.removeEventListener("scroll", schedule);
       }
     };
   }, [scrollContainerRef, scrollContainerSelector]);
@@ -167,7 +169,7 @@ export default function MobileScrollEdgeButtons({
           type="button"
           size="icon"
           variant="outline"
-          className="pointer-events-auto h-10 w-10 rounded-full border-border/70 bg-background/95 shadow-sm backdrop-blur"
+          className="pointer-events-auto h-10 w-10 rounded-full border-border/70 bg-background/95 shadow-sm"
           aria-label="回到顶部"
           title="回到顶部"
           onClick={() => scrollByEdge("top")}
@@ -180,7 +182,7 @@ export default function MobileScrollEdgeButtons({
           type="button"
           size="icon"
           variant="outline"
-          className="pointer-events-auto h-10 w-10 rounded-full border-border/70 bg-background/95 shadow-sm backdrop-blur"
+          className="pointer-events-auto h-10 w-10 rounded-full border-border/70 bg-background/95 shadow-sm"
           aria-label="去到底部"
           title="去到底部"
           onClick={() => scrollByEdge("bottom")}

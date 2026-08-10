@@ -97,11 +97,15 @@ export default function MobileNovelWorkspaceNavMenu({
         <Menu className="h-4 w-4" aria-hidden="true" />
       </Button>
 
-      <Sheet open={open} onOpenChange={setOpen} direction="left">
-        <SheetContent side="left" className="flex h-dvh max-h-dvh w-[min(100vw,20rem)] flex-col gap-0 p-0">
-          <SheetHeader className="shrink-0 border-b px-4 py-4">
+      <Sheet open={open} onOpenChange={setOpen} direction="left" modal>
+        <SheetContent
+          side="left"
+          className="flex !h-[100dvh] !max-h-[100dvh] w-[min(100vw,18rem)] flex-col gap-0 p-0"
+          style={{ top: 0, bottom: 0, height: "100dvh", maxHeight: "100dvh" }}
+        >
+          <SheetHeader className="shrink-0 border-b px-4 py-4 pr-12">
             <SheetTitle>工作区导航</SheetTitle>
-            <SheetDescription>离开章节执行页后，可从这里回到首页或其他入口。</SheetDescription>
+            <SheetDescription>回到首页或其他入口，继续推进当前小说。</SheetDescription>
           </SheetHeader>
           <SheetBody className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
             {items.map((item) => {

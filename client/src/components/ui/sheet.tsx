@@ -9,12 +9,14 @@ const Sheet = ({
   // Prevent content-scroll from dismissing the drawer when the list hits the top.
   handleOnly = true,
   scrollLockTimeout = 800,
+  noBodyStyles = true,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
   <DrawerPrimitive.Root
     shouldScaleBackground={shouldScaleBackground}
     handleOnly={handleOnly}
     scrollLockTimeout={scrollLockTimeout}
+    noBodyStyles={noBodyStyles}
     {...props}
   />
 );
@@ -44,8 +46,8 @@ const sheetVariants = cva(
         top: "inset-x-0 top-0 w-full max-h-[85dvh] rounded-b-xl border-b",
         bottom:
           "inset-x-0 bottom-0 w-full max-w-none max-h-[85dvh] rounded-t-xl border-t pb-[env(safe-area-inset-bottom)]",
-        left: "inset-y-0 left-0 h-dvh max-h-dvh w-[min(100vw,24rem)] border-r",
-        right: "inset-y-0 right-0 h-dvh max-h-dvh w-[min(100vw,24rem)] border-l",
+        left: "inset-y-0 left-0 top-0 h-[100dvh] max-h-[100dvh] w-[min(100vw,20rem)] border-r",
+        right: "inset-y-0 right-0 top-0 h-[100dvh] max-h-[100dvh] w-[min(100vw,20rem)] border-l",
       },
     },
     defaultVariants: {
