@@ -29,10 +29,12 @@ export default function NovelChapterEdit() {
   });
 
   const detail = novelDetailQuery.data?.data;
+  const chapters = detail?.chapters ?? [];
   const chapter = useMemo(
-    () => detail?.chapters.find((item) => item.id === chapterId),
-    [chapterId, detail?.chapters],
+    () => chapters.find((item) => item.id === chapterId),
+    [chapterId, chapters],
   );
+  const novelTitle = detail?.title?.trim() || "未命名小说";
 
   if (novelDetailQuery.isLoading && !detail) {
     return (
@@ -59,11 +61,13 @@ export default function NovelChapterEdit() {
   }
 
   return (
-    <div className="mobile-page-chapter-edit flex h-dvh min-h-0 flex-col overflow-hidden">
+    <div className="mobile-page-chapter-edit min-h-dvh overflow-x-hidden">
       <ChapterEditorShell
         key={`${chapter.id}:${chapter.updatedAt}`}
         novelId={id}
+        novelTitle={novelTitle}
         chapter={chapter}
+        chapters={chapters}
         workspace={chapterEditorWorkspaceQuery.data?.data ?? null}
         workspaceStatus={chapterEditorWorkspaceQuery.isLoading
           ? "loading"
@@ -72,6 +76,7 @@ export default function NovelChapterEdit() {
             : "ready"}
         onBack={() => navigate(`/novels/${id}/edit`)}
         onOpenVersionHistory={() => navigate(`/novels/${id}/edit`)}
+        onNavigateChapter={(nextChapterId) => navigate(`/novels/${id}/chapters/${nextChapterId}`)}
       />
     </div>
   );

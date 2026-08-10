@@ -11,6 +11,7 @@ import { createNovelSnapshot, previewChapterAiRevision, updateNovelChapter } fro
 import { queryKeys } from "@/api/queryKeys";
 import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
 import MobileScrollEdgeButtons from "@/components/layout/mobile/MobileScrollEdgeButtons";
+import MobileNovelWorkspaceNavMenu from "@/pages/novels/mobile/MobileNovelWorkspaceNavMenu";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "@/components/ui/toast";
 import { useLLMStore } from "@/store/llmStore";
-import { ClipboardList, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardList, Sparkles } from "lucide-react";
 import ChapterEditorDirectorPanel from "./ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "./ChapterEditorSidebar";
 import ChapterTextEditor from "./ChapterTextEditor";
@@ -80,11 +81,14 @@ function toSelectionFromRange(
 export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   const {
     novelId,
+    novelTitle,
     chapter,
+    chapters = [],
     workspace,
     workspaceStatus,
     onBack,
     onOpenVersionHistory,
+    onNavigateChapter,
   } = props;
   const llm = useLLMStore();
   const queryClient = useQueryClient();
@@ -417,6 +421,24 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   const headerSaveLabel = getSaveStatusLabel(saveStatus, isDirty);
   const chapterTitle = `第 ${chapter.order} 章 · ${chapter.title?.trim() || "未命名章节"}`;
   const recommendedLabel = workspace?.recommendedTask?.title?.trim() || "按当前推荐继续改写";
+  const workspaceNovelTitle = novelTitle?.trim() || "当前小说";
+  const orderedChapters = [...chapters].sort((left, right) => left.order - right.order);
+  const currentChapterIndex = orderedChapters.findIndex((item) => item.id === chapter.id);
+  const previousChapter = currentChapterIndex > 0 ? orderedChapters[currentChapterIndex - 1] : null;
+  const nextChapter = currentChapterIndex >= 0 && currentChapterIndex < orderedChapters.length - 1
+    ? orderedChapters[currentChapterIndex + 1]
+    : null;
+
+  const handleNavigateChapter = (targetChapterId: string) => {
+    if (!onNavigateChapter) {
+      return;
+    }
+    if (isDirty) {
+      toast.error("请先保存本章，再切换章节。");
+      return;
+    }
+    onNavigateChapter(targetChapterId);
+  };
 
   const sidebar = (
     <ChapterEditorSidebar
@@ -463,9 +485,10 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
   );
 
   const textEditor = (
-    <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+    <div className={isMobileViewport ? "relative min-w-0" : "relative min-h-0 min-w-0 flex-1 overflow-hidden"}>
       <ChapterTextEditor
         value={contentDraft}
+        fillHeight={!isMobileViewport}
         readOnly={session.status !== "idle"}
         onChange={(next) => {
           setContentDraft(next);
@@ -496,14 +519,20 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
 
   if (isMobileViewport) {
     return (
-      <div className="mobile-page-chapter-edit flex h-full min-h-0 flex-1 flex-col gap-3 overflow-hidden px-3 pb-28 pt-3">
-        <header className="shrink-0 space-y-2 rounded-xl border border-border/70 bg-background p-3">
+      <div className="mobile-page-chapter-edit space-y-3 overflow-x-hidden px-3 pb-28 pt-3">
+        <header className="sticky top-0 z-30 space-y-2 rounded-xl border border-border/70 bg-background/95 p-3 backdrop-blur">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-foreground">{chapterTitle}</div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {wordCount} 字 · {headerSaveLabel}
-              </p>
+            <div className="flex min-w-0 items-start gap-2">
+              <MobileNovelWorkspaceNavMenu
+                novelId={novelId}
+                novelTitle={workspaceNovelTitle}
+              />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-foreground">{chapterTitle}</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {wordCount} 字 · {headerSaveLabel}
+                </p>
+              </div>
             </div>
             {onBack ? (
               <Button type="button" size="sm" variant="outline" className="h-10 shrink-0" onClick={onBack}>
@@ -511,6 +540,30 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
               </Button>
             ) : null}
           </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-11"
+              disabled={!previousChapter || !onNavigateChapter}
+              onClick={() => previousChapter && handleNavigateChapter(previousChapter.id)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              上一章
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 min-h-11"
+              disabled={!nextChapter || !onNavigateChapter}
+              onClick={() => nextChapter && handleNavigateChapter(nextChapter.id)}
+            >
+              下一章
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
           {workspace?.recommendedTask ? (
             <p className="text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
               推荐：{recommendedLabel}
@@ -547,9 +600,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           ) : null}
         </header>
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-border/70 bg-background">
-          {textEditor}
-        </div>
+        {textEditor}
 
         <div
           className="fixed left-3 right-3 z-40 rounded-xl border border-border/70 bg-background/95 p-2 shadow-lg backdrop-blur"
@@ -566,7 +617,6 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
         </div>
 
         <MobileScrollEdgeButtons
-          scrollContainerSelector="[data-chapter-editor-scroll]"
           bottomOffsetClassName="bottom-[calc(5.5rem+env(safe-area-inset-bottom))]"
         />
 

@@ -29,11 +29,14 @@ export interface ChapterEditorSessionState extends Partial<ChapterEditorAiRevisi
 
 export interface ChapterEditorShellProps {
   novelId: string;
+  novelTitle?: string;
   chapter: Chapter | undefined;
+  chapters?: Chapter[];
   workspace: ChapterEditorWorkspaceResponse | null;
   workspaceStatus: "loading" | "ready" | "error";
   onBack?: () => void;
   onOpenVersionHistory?: () => void;
+  onNavigateChapter?: (chapterId: string) => void;
   onRunFullAudit?: () => void;
   onGenerateChapterPlan?: () => void;
   onReplanChapter?: () => void;

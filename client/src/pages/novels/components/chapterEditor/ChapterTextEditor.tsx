@@ -41,6 +41,8 @@ type ChapterEditorPreview =
 interface ChapterTextEditorProps {
   value: string;
   readOnly?: boolean;
+  /** When false, content grows with the page (mobile). When true, fills parent and scrolls inside. */
+  fillHeight?: boolean;
   onChange: (next: string) => void;
   onSelectionChange: (selection: ChapterEditorSelectionRange | null, position: SelectionToolbarPosition | null) => void;
   preview?: ChapterEditorPreview | null;
@@ -161,7 +163,15 @@ function renderBlockPreview(
 }
 
 export default function ChapterTextEditor(props: ChapterTextEditorProps) {
-  const { value, readOnly = false, onChange, onSelectionChange, preview, focusRange = null } = props;
+  const {
+    value,
+    readOnly = false,
+    fillHeight = true,
+    onChange,
+    onSelectionChange,
+    preview,
+    focusRange = null,
+  } = props;
   const [editorSeed, setEditorSeed] = useState(0);
   const [internalText, setInternalText] = useState(() => normalizeChapterContent(value));
   const [paragraphMarkerOffsets, setParagraphMarkerOffsets] = useState<Array<{ index: number; top: number }>>([]);
@@ -358,14 +368,24 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
   ) : null;
 
   return (
-    <div ref={containerRef} className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm md:min-h-[540px] xl:min-h-0">
-      <div className="shrink-0 flex items-center justify-between border-b border-border/70 px-4 py-3">
+    <div
+      ref={containerRef}
+      className={
+        fillHeight
+          ? "relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-border/70 bg-background shadow-sm md:min-h-[540px] xl:min-h-0"
+          : "relative flex min-h-[60vh] flex-col rounded-2xl border border-border/70 bg-background"
+      }
+    >
+      <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-4 py-3">
         <div className="text-sm font-medium text-foreground">正文</div>
         <div className="text-xs text-muted-foreground">{helperText}</div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4" data-chapter-editor-scroll="true">
-        <div className="relative min-h-full">
+      <div
+        className={fillHeight ? "min-h-0 flex-1 overflow-y-auto p-4" : "p-4"}
+        data-chapter-editor-scroll={fillHeight ? "true" : undefined}
+      >
+        <div className={fillHeight ? "relative min-h-full" : "relative"}>
           {preview?.mode === "inline" && previewContent ? (
             <div
               ref={surfaceRef}
@@ -390,7 +410,7 @@ export default function ChapterTextEditor(props: ChapterTextEditorProps) {
             <Plate editor={editor} onSelectionChange={updateSelection} onValueChange={handleValueChange}>
               <div ref={surfaceRef} className="min-h-full">
                 <PlateContent
-                  className={`${EDITOR_BODY_CLASS_NAME} ${SURFACE_INNER_PADDING_CLASS_NAME} min-h-full rounded-2xl bg-muted/10 p-4 outline-none [&_p]:text-foreground`}
+                  className={`${EDITOR_BODY_CLASS_NAME} ${SURFACE_INNER_PADDING_CLASS_NAME} min-h-[50vh] rounded-2xl bg-muted/10 p-4 outline-none [&_p]:text-foreground`}
                   onFocus={() => {
                     isUserEditingRef.current = true;
                   }}
