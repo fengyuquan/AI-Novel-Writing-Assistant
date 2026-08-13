@@ -135,7 +135,12 @@ export default function ComicProjectPage() {
     select: (res) =>
       (res.data ?? [])
         .filter((p) => p.supportsImageGeneration && p.isConfigured)
-        .map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
+        .map((p) => ({
+          value: p.provider,
+          label: p.currentImageModel
+            ? `${p.displayName ?? p.name} · ${p.currentImageModel}`
+            : (p.displayName ?? p.name),
+        })),
   });
   // 缓存的 provider 仍存在于可用列表才用，否则回退到第一个（避免引用已失效的 provider 配置）
   const resolvedProvider =
@@ -348,9 +353,9 @@ export default function ComicProjectPage() {
               {formatDef.tag}
             </span>
           )}
-          {/* 图片模型全局选择器 */}
+          {/* 默认图片供应商：单次生图仍可在确认弹窗里改供应商和具体模型 */}
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">图片模型</span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">默认图片供应商</span>
             {providerOptions.length === 0 ? (
               <span className="text-xs text-destructive">暂无可用图片服务</span>
             ) : (

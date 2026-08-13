@@ -65,37 +65,68 @@ export function ImageGenerationConfirmDialog({
   const [optimizationInstruction, setOptimizationInstruction] = useState("");
   const [includedReferenceImageUrls, setIncludedReferenceImageUrls] = useState<string[]>([]);
   const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
   const [size, setSize] = useState("");
   const [promptAssistAction, setPromptAssistAction] = useState<PromptAssistAction | null>(null);
   const [promptAssistLoading, setPromptAssistLoading] = useState<PromptAssistAction | null>(null);
   const [promptAssistResult, setPromptAssistResult] = useState<ImagePromptAssistResult | null>(null);
   const [promptAssistError, setPromptAssistError] = useState("");
 
-  // 弹窗重新打开或 preview 变更时，重置编辑态为预览默认值
-  useEffect(() => {
-    if (preview) {
-      setPrompt(preview.prompt);
-      setNegativePrompt(preview.negativePrompt ?? "");
-      setOptimizationInstruction("");
-      setIncludedReferenceImageUrls(preview.referenceImages.map((ref) => ref.url));
-      setProvider(preview.provider);
-      setSize(preview.size);
-      setPromptAssistAction(null);
-      setPromptAssistLoading(null);
-      setPromptAssistResult(null);
-      setPromptAssistError("");
-    }
-  }, [preview]);
-
-  // 可用 provider 列表（图像生成 + 已配置）
-  const { data: providerOptions = [] } = useQuery({
+  // 可用 provider 列表（图像生成 + 已配置），保留 imageModels 供二级模型选择
+  const { data: imageProviders = [] } = useQuery({
     queryKey: ["settings", "api-keys"],
     queryFn: getAPIKeySettings,
     select: (res) =>
-      (res.data ?? [])
-        .filter((p) => p.supportsImageGeneration && p.isConfigured)
-        .map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
+      (res.data ?? []).filter((p) => p.supportsImageGeneration && p.isConfigured),
   });
+
+  const providerOptions = useMemo(
+    () => imageProviders.map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
+    [imageProviders],
+  );
+
+  const resolveDefaultModel = (providerId: string, preferred?: string | null) => {
+    const entry = imageProviders.find((p) => p.provider === providerId);
+    const preferredTrimmed = preferred?.trim() || "";
+    if (preferredTrimmed && (!entry?.imageModels?.length || entry.imageModels.includes(preferredTrimmed))) {
+      return preferredTrimmed;
+    }
+    return entry?.currentImageModel
+      || entry?.defaultImageModel
+      || entry?.imageModels?.[0]
+      || preferredTrimmed
+      || "";
+  };
+
+  // 弹窗重新打开或 preview 变更时，重置编辑态为预览默认值
+  useEffect(() => {
+    if (!preview) return;
+    setPrompt(preview.prompt);
+    setNegativePrompt(preview.negativePrompt ?? "");
+    setOptimizationInstruction("");
+    setIncludedReferenceImageUrls(preview.referenceImages.map((ref) => ref.url));
+    setProvider(preview.provider);
+    setModel(resolveDefaultModel(preview.provider, preview.model));
+    setSize(preview.size);
+    setPromptAssistAction(null);
+    setPromptAssistLoading(null);
+    setPromptAssistResult(null);
+    setPromptAssistError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 preview 身份变化时重置整表
+  }, [preview]);
+
+  // 设置列表稍后到达时，补齐当前供应商的默认模型（不覆盖用户已选模型）
+  useEffect(() => {
+    if (!preview || !provider || imageProviders.length === 0) return;
+    setModel((current) => {
+      const entry = imageProviders.find((p) => p.provider === provider);
+      if (current && (!entry?.imageModels?.length || entry.imageModels.includes(current))) {
+        return current;
+      }
+      return resolveDefaultModel(provider, preview.model);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imageProviders, preview, provider]);
 
   // 当前 provider 不在可用列表里时，临时追加为选项（不丢失数据）
   const providerChoices = useMemo(() => {
@@ -103,6 +134,14 @@ export function ImageGenerationConfirmDialog({
     if (providerOptions.some((p) => p.value === provider)) return providerOptions;
     return [...providerOptions, { value: provider, label: provider }];
   }, [provider, providerOptions]);
+
+  const modelChoices = useMemo(() => {
+    const entry = imageProviders.find((p) => p.provider === provider);
+    const options = [...(entry?.imageModels ?? [])];
+    if (model && !options.includes(model)) options.unshift(model);
+    if (!options.length && entry?.currentImageModel) options.push(entry.currentImageModel);
+    return options;
+  }, [imageProviders, model, provider]);
 
   // size 也保证当前值在列表里
   const sizeChoices = useMemo(() => {
@@ -114,6 +153,8 @@ export function ImageGenerationConfirmDialog({
   const promptDirty = preview ? prompt.trim() !== preview.prompt.trim() : false;
   const negativePromptDirty = preview ? negativePrompt.trim() !== (preview.negativePrompt ?? "").trim() : false;
   const providerDirty = preview ? provider !== preview.provider : false;
+  const defaultModel = preview ? resolveDefaultModel(preview.provider, preview.model) : "";
+  const modelDirty = preview ? model.trim() !== defaultModel.trim() : false;
   const sizeDirty = preview ? size !== preview.size : false;
   const referenceImages = useMemo(
     () => preview?.referenceImages.filter((ref) => includedReferenceImageUrls.includes(ref.url)) ?? [],
@@ -126,7 +167,7 @@ export function ImageGenerationConfirmDialog({
     [includedReferenceImageUrls, preview],
   );
   const referenceDirty = excludedReferenceImageUrls.length > 0;
-  const anyDirty = promptDirty || negativePromptDirty || providerDirty || sizeDirty || referenceDirty;
+  const anyDirty = promptDirty || negativePromptDirty || providerDirty || modelDirty || sizeDirty || referenceDirty;
 
   const handleConfirm = () => {
     if (!preview) return;
@@ -134,6 +175,8 @@ export function ImageGenerationConfirmDialog({
       promptOverride: promptDirty ? prompt.trim() : undefined,
       negativePromptOverride: negativePromptDirty ? negativePrompt.trim() : undefined,
       providerOverride: providerDirty ? provider : undefined,
+      // 只要选了具体模型就回传，确保本次生图使用弹窗里看到的模型
+      modelOverride: model.trim() || undefined,
       sizeOverride: sizeDirty ? size : undefined,
       excludedReferenceImageUrls: referenceDirty ? excludedReferenceImageUrls : undefined,
     });
@@ -460,18 +503,20 @@ export function ImageGenerationConfirmDialog({
               </div>
             )}
 
-            {/* 参数：provider / size */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 参数：供应商 / 具体模型 / 尺寸 */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
                 <p className="mb-1 text-xs font-semibold text-muted-foreground">
-                  图片模型
+                  图片供应商
                   {providerDirty && <span className="ml-1.5 rounded bg-amber-100 px-1 py-px text-[9px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">已修改</span>}
                 </p>
                 <SelectControl
                   className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
                   value={provider}
                   onChange={(e) => {
-                    setProvider(e.target.value);
+                    const nextProvider = e.target.value;
+                    setProvider(nextProvider);
+                    setModel(resolveDefaultModel(nextProvider));
                     clearPromptAssistResult();
                   }}
                   disabled={submitting || !!promptAssistLoading}
@@ -481,6 +526,29 @@ export function ImageGenerationConfirmDialog({
                   ) : (
                     providerChoices.map((p) => (
                       <option key={p.value} value={p.value}>{p.label}</option>
+                    ))
+                  )}
+                </SelectControl>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                  具体模型
+                  {modelDirty && <span className="ml-1.5 rounded bg-amber-100 px-1 py-px text-[9px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">已修改</span>}
+                </p>
+                <SelectControl
+                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  value={model}
+                  onChange={(e) => {
+                    setModel(e.target.value);
+                    clearPromptAssistResult();
+                  }}
+                  disabled={submitting || !!promptAssistLoading || modelChoices.length === 0}
+                >
+                  {modelChoices.length === 0 ? (
+                    <option value="">该供应商暂无可用图片模型</option>
+                  ) : (
+                    modelChoices.map((item) => (
+                      <option key={item} value={item}>{item}</option>
                     ))
                   )}
                 </SelectControl>

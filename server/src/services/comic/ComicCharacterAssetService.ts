@@ -341,6 +341,7 @@ export class ComicCharacterAssetService {
     });
     await runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
       refImagePaths: refs.refImagePaths,

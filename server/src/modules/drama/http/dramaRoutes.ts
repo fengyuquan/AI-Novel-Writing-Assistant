@@ -40,6 +40,7 @@ const imageProviderBodySchema = z
     useCharacterRefImages: z.boolean().optional(),
     promptOverride: z.string().trim().max(4000).optional(),
     providerOverride: z.string().trim().optional(),
+    modelOverride: z.string().trim().max(200).optional(),
     sizeOverride: z.string().trim().max(20).optional(),
     negativePromptOverride: z.string().trim().max(2000).optional(),
     excludedReferenceImageUrls: z.array(z.string().trim().min(1).max(1000)).max(24).optional(),
@@ -491,6 +492,7 @@ router.post("/projects/:id/shots/:shotId/keyframe", validate({ params: shotParam
       useCharacterRefImages?: boolean;
       promptOverride?: string;
       providerOverride?: string;
+      modelOverride?: string;
       sizeOverride?: string;
       negativePromptOverride?: string;
       excludedReferenceImageUrls?: string[];
@@ -502,6 +504,7 @@ router.post("/projects/:id/shots/:shotId/keyframe", validate({ params: shotParam
       {
         promptOverride: body?.promptOverride,
         providerOverride: body?.providerOverride,
+        modelOverride: body?.modelOverride,
         sizeOverride: body?.sizeOverride as never,
         negativePromptOverride: body?.negativePromptOverride,
         excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
@@ -592,6 +595,7 @@ router.post(
         provider?: string;
         promptOverride?: string;
         providerOverride?: string;
+        modelOverride?: string;
         sizeOverride?: string;
         negativePromptOverride?: string;
         excludedReferenceImageUrls?: string[];
@@ -602,6 +606,7 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
           negativePromptOverride: body?.negativePromptOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
@@ -625,6 +630,7 @@ router.post(
         provider?: string;
         promptOverride?: string;
         providerOverride?: string;
+        modelOverride?: string;
         sizeOverride?: string;
         negativePromptOverride?: string;
         excludedReferenceImageUrls?: string[];
@@ -635,6 +641,7 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
           negativePromptOverride: body?.negativePromptOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,

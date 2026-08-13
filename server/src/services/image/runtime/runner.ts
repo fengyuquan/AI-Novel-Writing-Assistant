@@ -62,8 +62,8 @@ export async function runImageGeneration<TState extends GeneratedImageState>(
     throw new AppError(`图片 Provider ${provider} 暂不支持。`, 400);
   }
 
-  // 2. model 解析
-  const model = await resolveImageModel(provider);
+  // 2. model 解析（允许确认弹窗临时指定供应商下的具体模型）
+  const model = await resolveImageModel(provider, opts.model);
 
   // 3. loadState + 归档/版本号
   const existing = await adapter.loadState();
@@ -119,6 +119,7 @@ export async function runImageGeneration<TState extends GeneratedImageState>(
       url: adapter.publicUrl(),
       prompt: opts.prompt,
       provider,
+      model,
       generatedAt: new Date().toISOString(),
       history: nextHistory,
       ...(opts.referenceImages && opts.referenceImages.length > 0 ? { referenceImages: opts.referenceImages } : {}),

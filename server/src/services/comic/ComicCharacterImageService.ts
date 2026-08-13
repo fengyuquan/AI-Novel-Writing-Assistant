@@ -41,6 +41,7 @@ export interface CharacterSheetData {
   url?: string;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   error?: string;
   history?: CharacterSheetHistoryItem[];
@@ -65,6 +66,7 @@ export interface CharacterExpressionData {
   url?: string;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   error?: string;
   referenceImages?: import("../image/runtime").GeneratedReferenceImageMeta[];
@@ -413,6 +415,7 @@ export class ComicCharacterImageService {
     });
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
       sceneType: "character",
@@ -509,6 +512,7 @@ export class ComicCharacterImageService {
     });
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
       sceneType: "character",

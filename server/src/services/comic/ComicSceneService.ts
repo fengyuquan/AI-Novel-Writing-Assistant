@@ -264,6 +264,7 @@ export class ComicSceneService {
     const ctx = await this.buildSceneGenerationContext(sceneId);
     await runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
     });

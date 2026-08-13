@@ -48,6 +48,17 @@
 
 微调生成成功后仍遵守版本归档规则：旧三视图进入 history，新图成为当前三视图。不要新增本地上传链路来替代这个默认路径；本阶段的“原角色图参考”指当前已生成三视图。
 
+## Image Generation Confirm Dialog
+
+角色三视图、表情稿、资产图、场景设定图与格子图共用 `ImageGenerationConfirmDialog` 作为生图前人工干预入口：
+
+- 可编辑最终 Prompt，并可使用「解释 Prompt / 优化 Prompt」。
+- 可临时移除本次不需要发送的参考图。
+- 可分别选择「图片供应商」与该供应商下的「具体模型」；`modelOverride` 通过 generate 接口传入 `runImageGeneration`，由 `resolveImageModel(provider, model)` 解析。
+- 项目页顶部的默认供应商只决定 prepare 默认值；单次确认弹窗里的供应商/模型选择只影响本次生成，不改系统设置里的默认图片模型。
+
+不要把确认弹窗里的供应商下拉误当成具体模型列表；具体模型必须来自该供应商配置的 `imageModels`。
+
 ## Character Workspace UI
 
 角色资产页采用“左侧角色列表 + 右侧当前角色详情”的工作台结构。左侧只承担选择和状态速览，右侧集中展示当前角色的三视图、表情稿、外貌锚点、三视图提示词和微调入口。

@@ -42,6 +42,7 @@ export interface PanelImageData {
   url?: string;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   error?: string;
   /** 本次生图实际使用的参考素材（成功生成时写入；失败/未生图时不写） */
@@ -488,6 +489,7 @@ export class ComicPanelImageService {
       });
       return await runImageGeneration(ctx.adapter, {
         provider: overrides?.providerOverride ?? provider,
+        model: overrides?.modelOverride,
         prompt: overrides?.promptOverride ?? ctx.prompt,
         size: overrides?.sizeOverride ?? ctx.size,
         refImagePaths: refs.refImagePaths,

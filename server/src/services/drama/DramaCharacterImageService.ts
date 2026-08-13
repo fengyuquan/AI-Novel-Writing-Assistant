@@ -241,6 +241,7 @@ export class DramaCharacterImageService {
     const ctx = await this.buildCharacterSheetGenerationContext(characterId);
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
       sceneType: "character",

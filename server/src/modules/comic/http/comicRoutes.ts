@@ -92,6 +92,7 @@ const imageGenerateSchema = z
     provider: z.string().trim().optional(),
     promptOverride: z.string().trim().max(4000).optional(),
     providerOverride: z.string().trim().optional(),
+    modelOverride: z.string().trim().max(200).optional(),
     sizeOverride: z.string().trim().max(20).optional(),
     negativePromptOverride: z.string().trim().max(2000).optional(),
     excludedReferenceImageUrls: excludedReferenceImageUrlsSchema,
@@ -342,7 +343,9 @@ const charSheetGenerateSchema = z
     appearanceOverride: z.string().trim().max(1000).optional(),
     promptOverride: z.string().trim().max(4000).optional(),
     providerOverride: z.string().trim().optional(),
+    modelOverride: z.string().trim().max(200).optional(),
     sizeOverride: z.string().trim().max(20).optional(),
+    negativePromptOverride: z.string().trim().max(2000).optional(),
     excludedReferenceImageUrls: excludedReferenceImageUrlsSchema,
   })
   .optional();
@@ -389,7 +392,9 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
+          negativePromptOverride: body?.negativePromptOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
         },
       );
@@ -497,6 +502,7 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
           negativePromptOverride: body?.negativePromptOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
@@ -604,6 +610,7 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
           negativePromptOverride: body?.negativePromptOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
@@ -911,12 +918,14 @@ router.post("/character-assets/:assetId/generate-image", validate({ params: asse
       promptOverride?: string;
       sizeOverride?: string;
       providerOverride?: string;
+      modelOverride?: string;
       excludedReferenceImageUrls?: string[];
     };
     await comicCharacterAssetService.generateAssetImage(assetId, body.provider, {
       promptOverride: body.promptOverride,
       sizeOverride: body.sizeOverride as never,
       providerOverride: body.providerOverride,
+      modelOverride: body.modelOverride,
       excludedReferenceImageUrls: body.excludedReferenceImageUrls,
     });
     const data = await comicCharacterAssetService.getAsset(assetId);
@@ -1033,6 +1042,7 @@ router.post("/scenes/:sceneId/generate-image", validate({ params: sceneIdParams,
     await comicSceneService.generateSceneSheet(sceneId, body?.provider, {
       promptOverride: body?.promptOverride,
       providerOverride: body?.providerOverride,
+      modelOverride: body?.modelOverride,
       sizeOverride: body?.sizeOverride as never,
       negativePromptOverride: body?.negativePromptOverride,
       excludedReferenceImageUrls: body?.excludedReferenceImageUrls,

@@ -583,6 +583,7 @@ export interface ImageGenerationPreview {
   negativePrompt?: string;
   referenceImages: Array<{ kind: string; label: string; url: string; assetId?: string }>;
   provider: string;
+  model?: string;
   size: string;
   availableProviders?: Array<{ value: string; label: string }>;
   availableSizes?: string[];
@@ -591,6 +592,7 @@ export interface ImageGenerationPreview {
 export interface ImageGenerationOverrides {
   promptOverride?: string;
   providerOverride?: string;
+  modelOverride?: string;
   sizeOverride?: string;
   negativePromptOverride?: string;
   excludedReferenceImageUrls?: string[];
