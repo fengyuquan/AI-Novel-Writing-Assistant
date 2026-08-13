@@ -317,8 +317,8 @@ export function ImageGenerationConfirmDialog({
       <p className="text-[11px] text-muted-foreground">
         {manualMode
           ? supportsManualUpload
-            ? "把提示词复制到外部出图工具，再把结果粘贴或上传回来"
-            : "当前入口暂不支持人工上传，请关闭顶部「人工干预」或改用旁路上传"
+            ? "复制提示词 → 外部 API 出图 → 粘贴/上传结果继续"
+            : "当前入口暂不支持粘贴结果，请把顶部「出图方式」改回自动，或改用该入口旁的上传"
           : anyDirty
             ? "本次将使用上方修改后的参数生图（仅一次性，不保存到角色）"
             : "点击「开始生图」按当前参数生成"}
@@ -333,11 +333,25 @@ export function ImageGenerationConfirmDialog({
               type="button"
               size="sm"
               variant="outline"
+              disabled={submitting || !prompt.trim()}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void copyPrompt();
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              复制提示词
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
               disabled={submitting || !supportsManualUpload}
               onClick={() => void pasteManualImage()}
             >
               <ClipboardPaste className="h-3.5 w-3.5" />
-              粘贴图片
+              粘贴结果
             </Button>
             <Button
               type="button"
@@ -346,7 +360,7 @@ export function ImageGenerationConfirmDialog({
               onClick={() => fileInputRef.current?.click()}
             >
               {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              {submitting ? "上传中..." : "上传图片"}
+              {submitting ? "上传中..." : "上传结果"}
             </Button>
           </>
         ) : (
@@ -393,7 +407,13 @@ export function ImageGenerationConfirmDialog({
             aria-label="人工干预生图，可粘贴图片"
           >
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-              已开启人工干预：不调用图像模型。请复制下方提示词到外部工具出图，再把结果粘贴或上传到这里。
+              <p className="font-medium">人工出图流程</p>
+              <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+                <li>复制下方提示词</li>
+                <li>自行调用外部图像 API 或出图工具生成图片</li>
+                <li>把结果图片粘贴或上传回来，继续后续流程</li>
+              </ol>
+              <p className="mt-1.5 text-[11px] opacity-90">此模式下不会调用本系统已配置的图像模型。</p>
             </div>
             <div>
               <div className="mb-1 flex items-center justify-between gap-2">

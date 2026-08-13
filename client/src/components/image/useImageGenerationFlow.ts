@@ -230,14 +230,14 @@ export function useImageGenerationFlow() {
       onCancel: cancel,
       onConfirm: (overrides: ImageGenerationOverrides) => {
         if (manualMode) {
-          toast.error("当前已开启人工干预，请粘贴或上传图片，而不是调用图像模型");
+          toast.error("当前为人工出图，请粘贴或上传结果图片，而不是调用图像模型");
           return;
         }
         void activeGenerate?.(overrides);
       },
       onManualUpload: (file: File) => {
         if (!activeUpload) {
-          toast.error("当前入口暂不支持人工上传，请先关闭人工干预或改用该入口旁的上传按钮");
+          toast.error("当前入口暂不支持粘贴结果，请先把顶部「出图方式」改回自动，或改用该入口旁的上传按钮");
           return;
         }
         void activeUpload(file);

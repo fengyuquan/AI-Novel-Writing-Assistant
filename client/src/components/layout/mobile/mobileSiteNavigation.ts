@@ -30,6 +30,8 @@ export const MOBILE_ROUTE_PATTERNS: MobileRoutePattern[] = [
   { key: "chapter-edit", pattern: /^\/novels\/[^/]+\/chapters\/[^/]+\/?$/, title: "章节正文", group: "novels" },
   { key: "drama", pattern: /^\/drama\/?$/, title: "短剧工作台", group: "creation" },
   { key: "drama-project", pattern: /^\/drama\/projects\/[^/]+\/?$/, title: "短剧项目", group: "creation" },
+  { key: "comic", pattern: /^\/comic\/?$/, title: "漫画工作台", group: "creation" },
+  { key: "comic-project", pattern: /^\/comic\/projects\/[^/]+\/?$/, title: "漫画项目", group: "creation" },
   { key: "creative-hub", pattern: /^\/creative-hub\/?$/, title: "创作中枢", group: "creation" },
   { key: "chat-legacy", pattern: /^\/chat-legacy\/?$/, title: "旧版聊天", group: "creation" },
   { key: "book-analysis", pattern: /^\/book-analysis\/?$/, title: "拆书", group: "creation" },
@@ -60,9 +62,10 @@ const primaryNavItems: MobileNavItem[] = [
 
 const moreNavGroups: MobileNavGroup[] = [
   {
-    title: "短剧",
+    title: "短剧与漫画",
     items: [
       { key: "drama", label: "短剧工作台", to: "/drama", group: "creation" },
+      { key: "comic", label: "漫画工作台", to: "/comic", group: "creation" },
     ],
   },
   {

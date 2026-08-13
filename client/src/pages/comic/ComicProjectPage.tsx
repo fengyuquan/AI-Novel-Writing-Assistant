@@ -482,24 +482,31 @@ export default function ComicProjectPage() {
               {formatDef.tag}
             </span>
           )}
-          {/* 默认图片模型（与系统设置同步）；单次生图可在确认弹窗里改供应商与模型 */}
+          {/* 出图方式 + 默认图片模型；单次生图可在确认弹窗里改供应商与模型 */}
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <label
-              className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs text-foreground"
-              title="勾选后，生图会弹出提示词窗口，改用粘贴/上传完成，不调用图像模型"
+            <span
+              className="text-xs text-muted-foreground whitespace-nowrap"
+              title="自动：直接调用图像模型；人工：弹出对话框复制提示词，你去外部 API/工具出图后粘贴结果继续"
             >
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5"
-                checked={manualImageIntervention}
-                onChange={(event) => {
-                  const enabled = event.target.checked;
-                  setManualImageIntervention(enabled);
-                  setManualImageInterventionEnabled(enabled);
-                }}
-              />
-              人工干预生成图片
-            </label>
+              出图方式
+            </span>
+            <SelectControl
+              className="rounded-md border bg-background px-2.5 py-1 text-xs"
+              value={manualImageIntervention ? "manual" : "auto"}
+              onChange={(event) => {
+                const enabled = event.target.value === "manual";
+                setManualImageIntervention(enabled);
+                setManualImageInterventionEnabled(enabled);
+                toast.message(
+                  enabled
+                    ? "已切换为人工出图：生成时会弹出提示词窗口，复制后自行调用外部 API，再粘贴或上传图片继续"
+                    : "已切换为自动出图：生成时直接调用已配置的图像模型",
+                );
+              }}
+            >
+              <option value="auto">自动</option>
+              <option value="manual">人工</option>
+            </SelectControl>
             <span className="text-xs text-muted-foreground whitespace-nowrap" title="与系统设置中的默认图片模型同步；文本类生成仍使用顶部模型">
               图片供应商
             </span>
@@ -561,20 +568,22 @@ export default function ComicProjectPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ComicGuideTab)}>
-        <TabsList className="w-full justify-start gap-1">
-          <TabsTrigger value="outline">分话大纲</TabsTrigger>
-          <TabsTrigger value="characters">
-            角色
-            {project.characters.length > 0 && (
-              <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
-                {project.characters.length}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="scenes">场景</TabsTrigger>
-          <TabsTrigger value="panels">格子图</TabsTrigger>
-          <TabsTrigger value="export">导出</TabsTrigger>
-        </TabsList>
+        <div className="-mx-1 overflow-x-auto px-1">
+          <TabsList className="inline-flex h-auto min-w-full w-max justify-start gap-1 sm:min-w-0 sm:w-full">
+            <TabsTrigger value="outline" className="shrink-0">分话大纲</TabsTrigger>
+            <TabsTrigger value="characters" className="shrink-0">
+              角色
+              {project.characters.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
+                  {project.characters.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="scenes" className="shrink-0">场景</TabsTrigger>
+            <TabsTrigger value="panels" className="shrink-0">格子图</TabsTrigger>
+            <TabsTrigger value="export" className="shrink-0">导出</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="outline" className="mt-4">
           <EpisodeListPanel projectId={id!} project={project} />

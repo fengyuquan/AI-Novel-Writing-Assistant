@@ -14,11 +14,15 @@ const routedPaths = [
   "/help",
   "/novels",
   "/novels/create",
+  "/novels/auto-director",
   "/novels/demo/preview",
   "/novels/demo/edit",
   "/novels/demo/chapters/chapter-1",
   "/creative-hub",
   "/drama",
+  "/drama/projects/demo",
+  "/comic",
+  "/comic/projects/demo",
   "/chat-legacy",
   "/book-analysis",
   "/tasks",
@@ -67,8 +71,9 @@ test("mobile more menu contains all non-primary registered pages", () => {
   assert.deepEqual(
     morePaths,
     [
-      "/help",
       "/drama",
+      "/comic",
+      "/help",
       "/book-analysis",
       "/auto-director/follow-ups",
       "/chat-legacy",
@@ -86,4 +91,11 @@ test("mobile more menu contains all non-primary registered pages", () => {
       "/settings",
     ],
   );
+});
+
+test("mobile comic project routes stay under creation group", () => {
+  assert.equal(getMobileNavGroupForPath("/comic"), "creation");
+  assert.equal(getMobileNavGroupForPath("/comic/projects/demo"), "creation");
+  assert.equal(getMobilePageTitle("/comic"), "漫画工作台");
+  assert.equal(getMobilePageTitle("/comic/projects/demo"), "漫画项目");
 });

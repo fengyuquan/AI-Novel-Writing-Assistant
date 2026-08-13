@@ -7,6 +7,7 @@ import {
   ListTodo,
   Menu,
   Sparkles,
+  SquareStack,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,13 @@ export default function MobileNovelWorkspaceNavMenu({
       icon: Clapperboard,
     },
     {
+      key: "comic",
+      label: "漫画工作台",
+      description: "进入漫画项目，继续分话、角色与格子图",
+      to: "/comic",
+      icon: SquareStack,
+    },
+    {
       key: "workspace",
       label: "当前小说工作区",
       description: novelTitle,
@@ -113,7 +121,7 @@ export default function MobileNovelWorkspaceNavMenu({
         >
           <SheetHeader className="shrink-0 border-b px-4 py-4 pr-12">
             <SheetTitle>工作区导航</SheetTitle>
-            <SheetDescription>回到首页、短剧工作台或其他入口。</SheetDescription>
+            <SheetDescription>回到首页、短剧/漫画工作台或其他入口。</SheetDescription>
           </SheetHeader>
           <SheetBody className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
             {items.map((item) => {
