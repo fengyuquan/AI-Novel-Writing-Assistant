@@ -12,6 +12,7 @@ interface RegisterNovelChapterEditorRoutesInput {
     | "previewChapterAiRevision"
     | "previewChapterRewrite"
     | "detectChapterAiWriting"
+    | "generateChapterImageStoryPack"
     | "listChapterStyleBenchmarkSources"
     | "rewriteChapterStyleBenchmark"
     | "compareChapterStyleBenchmark"
@@ -23,6 +24,7 @@ interface RegisterNovelChapterEditorRoutesInput {
   rewritePreviewSchema: z.ZodTypeAny;
   aiRevisionPreviewSchema: z.ZodTypeAny;
   aiWritingDetectSchema: z.ZodTypeAny;
+  chapterImageStoryPackSchema: z.ZodTypeAny;
   styleBenchmarkRewriteSchema: z.ZodTypeAny;
   styleBenchmarkCompareSchema: z.ZodTypeAny;
   styleBenchmarkCacheSaveSchema: z.ZodTypeAny;
@@ -56,6 +58,7 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
     rewritePreviewSchema,
     aiRevisionPreviewSchema,
     aiWritingDetectSchema,
+    chapterImageStoryPackSchema,
     styleBenchmarkRewriteSchema,
     styleBenchmarkCompareSchema,
     styleBenchmarkCacheSaveSchema,
@@ -266,6 +269,39 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
             "小说不存在。",
             "章节不存在。",
             "当前章节正文为空，无法检测 AI 写法。",
+          ].includes(error.message)
+        ) {
+          next(new AppError(error.message, 400));
+          return;
+        }
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/:id/chapters/:chapterId/editor/image-story-pack",
+    validate({ params: chapterParamsSchema, body: chapterImageStoryPackSchema }),
+    async (req, res, next) => {
+      try {
+        const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+        const data = await novelService.generateChapterImageStoryPack(id, chapterId, req.body as any);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "Chapter image story pack generated.",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        if (forwardBusinessError(error, next)) {
+          return;
+        }
+        if (
+          error instanceof Error
+          && [
+            "小说不存在。",
+            "章节不存在。",
+            "当前章节正文为空，无法生成切图提示词。",
+            "AI 未返回可用镜头，请重试。",
           ].includes(error.message)
         ) {
           next(new AppError(error.message, 400));

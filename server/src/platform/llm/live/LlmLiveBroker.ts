@@ -5,6 +5,7 @@ import type {
   LlmLivePhase,
   LlmLiveSessionSnapshot,
 } from "@ai-novel/shared/types/llmLive";
+import { LlmRequestCancelledError } from "./LlmRequestCancelledError";
 
 const COMPLETED_SESSION_RETENTION_MS = 10 * 60 * 1000;
 const MAX_PREVIEW_CHARS = 16_000;
@@ -12,11 +13,16 @@ const MAX_PREVIEW_CHARS = 16_000;
 interface SessionRecord {
   snapshot: LlmLiveSessionSnapshot;
   startedAtMs: number;
+  controller: AbortController;
 }
 
 export interface LlmLiveSubscriptionFilter {
   taskId?: string;
   interactionId?: string;
+}
+
+function isTerminalPhase(phase: LlmLivePhase): boolean {
+  return phase === "completed" || phase === "failed" || phase === "cancelled";
 }
 
 export class LlmLiveBroker {
@@ -43,6 +49,7 @@ export class LlmLiveBroker {
     this.sessions.set(interactionId, {
       snapshot,
       startedAtMs: now.getTime(),
+      controller: new AbortController(),
     });
     this.publish({
       type: "session_started",
@@ -77,9 +84,87 @@ export class LlmLiveBroker {
       .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
   }
 
+  getAbortSignal(interactionId: string): AbortSignal | undefined {
+    return this.sessions.get(interactionId)?.controller.signal;
+  }
+
+  isCancelled(interactionId: string): boolean {
+    const record = this.sessions.get(interactionId);
+    if (!record) {
+      return false;
+    }
+    return record.snapshot.phase === "cancelled" || record.controller.signal.aborted;
+  }
+
+  /**
+   * 用户主动中断一次模型调用：abort 进行中的 stream，并把实况标为 cancelled。
+   * 返回 false 表示会话不存在或已结束。
+   */
+  requestCancel(interactionId: string, message = "用户已中断本次模型请求"): boolean {
+    const record = this.sessions.get(interactionId);
+    if (!record || isTerminalPhase(record.snapshot.phase)) {
+      return false;
+    }
+    const reason = new LlmRequestCancelledError(message);
+    if (!record.controller.signal.aborted) {
+      record.controller.abort(reason);
+    }
+    const cancelledAt = new Date().toISOString();
+    const phaseSeq = this.nextSequence();
+    record.snapshot = {
+      ...record.snapshot,
+      seq: phaseSeq,
+      phase: "cancelled",
+      phaseMessage: message,
+      updatedAt: cancelledAt,
+      completedAt: cancelledAt,
+    };
+    this.publish({
+      type: "phase_changed",
+      seq: phaseSeq,
+      at: cancelledAt,
+      interactionId,
+      phase: "cancelled",
+      message,
+    });
+    const cancelledSeq = this.nextSequence();
+    record.snapshot = {
+      ...record.snapshot,
+      seq: cancelledSeq,
+      updatedAt: cancelledAt,
+      completedAt: cancelledAt,
+    };
+    this.publish({
+      type: "session_cancelled",
+      seq: cancelledSeq,
+      at: cancelledAt,
+      interactionId,
+      message,
+    });
+    return true;
+  }
+
+  requestCancelActive(
+    filter: LlmLiveSubscriptionFilter = {},
+    message = "用户已中断本次模型请求",
+  ): string[] {
+    const cancelled: string[] = [];
+    for (const snapshot of this.getSnapshots(filter)) {
+      if (!isTerminalPhase(snapshot.phase)) {
+        if (this.requestCancel(snapshot.context.interactionId, message)) {
+          cancelled.push(snapshot.context.interactionId);
+        }
+      }
+    }
+    return cancelled;
+  }
+
   updatePhase(interactionId: string, phase: LlmLivePhase, message: string): void {
     const record = this.sessions.get(interactionId);
     if (!record) {
+      return;
+    }
+    if (isTerminalPhase(record.snapshot.phase) && phase !== record.snapshot.phase) {
       return;
     }
     const now = new Date().toISOString();
@@ -90,7 +175,7 @@ export class LlmLiveBroker {
       phase,
       phaseMessage: message,
       updatedAt: now,
-      completedAt: phase === "completed" || phase === "failed" || phase === "cancelled" ? now : null,
+      completedAt: isTerminalPhase(phase) ? now : null,
     };
     this.publish({
       type: "phase_changed",
@@ -107,7 +192,7 @@ export class LlmLiveBroker {
       return;
     }
     const record = this.sessions.get(interactionId);
-    if (!record) {
+    if (!record || isTerminalPhase(record.snapshot.phase)) {
       return;
     }
     const now = new Date().toISOString();
@@ -134,7 +219,7 @@ export class LlmLiveBroker {
 
   complete(interactionId: string): void {
     const record = this.sessions.get(interactionId);
-    if (!record) {
+    if (!record || isTerminalPhase(record.snapshot.phase)) {
       return;
     }
     this.updatePhase(interactionId, "completed", "模型结果已准备完成");
@@ -165,7 +250,7 @@ export class LlmLiveBroker {
 
   fail(interactionId: string, message: string): void {
     const record = this.sessions.get(interactionId);
-    if (!record) {
+    if (!record || isTerminalPhase(record.snapshot.phase)) {
       return;
     }
     this.updatePhase(interactionId, "failed", message);
@@ -191,6 +276,10 @@ export class LlmLiveBroker {
       interactionId,
       message,
     });
+  }
+
+  cancel(interactionId: string, message = "用户已中断本次模型请求"): void {
+    this.requestCancel(interactionId, message);
   }
 
   private matches(event: LlmLiveEvent, filter: LlmLiveSubscriptionFilter): boolean {
@@ -222,7 +311,7 @@ export class LlmLiveBroker {
     const cutoff = Date.now() - COMPLETED_SESSION_RETENTION_MS;
     for (const [interactionId, record] of this.sessions) {
       if (
-        (record.snapshot.phase === "completed" || record.snapshot.phase === "failed" || record.snapshot.phase === "cancelled")
+        isTerminalPhase(record.snapshot.phase)
         && Date.parse(record.snapshot.updatedAt) < cutoff
       ) {
         this.sessions.delete(interactionId);
@@ -236,6 +325,14 @@ export class LlmLiveSession {
     private readonly broker: LlmLiveBroker,
     readonly interactionId: string,
   ) {}
+
+  get signal(): AbortSignal | undefined {
+    return this.broker.getAbortSignal(this.interactionId);
+  }
+
+  isCancelled(): boolean {
+    return this.broker.isCancelled(this.interactionId);
+  }
 
   delta(content: string): void {
     this.broker.appendDelta(this.interactionId, content);
@@ -252,6 +349,22 @@ export class LlmLiveSession {
   fail(error: unknown): void {
     const message = error instanceof Error ? error.message : "模型调用失败";
     this.broker.fail(this.interactionId, message);
+  }
+
+  cancel(message = "用户已中断本次模型请求"): void {
+    this.broker.cancel(this.interactionId, message);
+  }
+
+  finishWithError(error: unknown): void {
+    if (this.isCancelled() || (error instanceof LlmRequestCancelledError)) {
+      this.cancel(error instanceof Error ? error.message : undefined);
+      return;
+    }
+    if (error && typeof error === "object" && (error as { name?: string }).name === "AbortError") {
+      this.cancel(error instanceof Error ? error.message : undefined);
+      return;
+    }
+    this.fail(error);
   }
 }
 

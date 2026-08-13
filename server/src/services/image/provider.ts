@@ -188,10 +188,9 @@ export function buildImageGenerationRequestBody(input: ImageProviderGenerateInpu
     }
   }
 
-  // 参考图注入（OpenAI images/edits 兼容格式）
-  // grok 暂不支持参考图，静默跳过；其他 provider 按 input_image_url 格式透传，
-  // 若 provider 实际不支持，API 层会返回错误，由上层处理。
-  if (input.refImages && input.refImages.length > 0 && input.provider !== "grok") {
+  // 参考图注入：仅当 provider+model 明确支持 edits 时透传。
+  // gpt-image / yuanbao / 自定义网关走 generations，由接口直接返回 b64/url。
+  if (input.refImages && input.refImages.length > 0 && providerSupportsImageEdits(input.provider, input.model)) {
     requestBody.input_image_url = input.refImages[0];
   }
 
@@ -200,6 +199,27 @@ export function buildImageGenerationRequestBody(input: ImageProviderGenerateInpu
 
 export function isImageProviderSupported(provider: LLMProvider): boolean {
   return supportsImageModelSettings(provider);
+}
+
+/**
+ * 是否走 /images/edits（图生图/参考图上传）。
+ *
+ * 与元宝一致：优先「服务端生成 → 接口直接返回 b64/url」，不依赖 edits。
+ * - grok / custom_provider：网关通常只有 generations
+ * - gpt-image* / yuanbao*：按文生图 generations 返回（官方 gpt-image 默认 b64_json）
+ */
+export function providerSupportsImageEdits(provider: LLMProvider, model?: string): boolean {
+  if (provider === "grok") return false;
+  if (typeof provider === "string" && provider.startsWith("custom_provider")) return false;
+  const normalizedModel = model?.trim().toLowerCase() ?? "";
+  if (normalizedModel && /gpt-image|yuanbao/.test(normalizedModel)) return false;
+  return true;
+}
+
+function shouldFallbackFromEditsError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Image API \(edits\) request failed \((400|404|405|501|502)\)/i.test(message)
+    || /not supported|unsupported|edits|图生图|reference upload/i.test(message);
 }
 
 export async function resolveImageModel(provider: LLMProvider, model?: string): Promise<string> {
@@ -290,11 +310,26 @@ export async function generateImagesByProvider(input: ImageProviderGenerateInput
   try {
     // 优先使用本地文件路径（multipart 上传，避免 base64 膨胀）
     const refImagePath = input.refImagePaths?.[0];
-    if (refImagePath && input.provider !== "grok") {
-      return await generateWithFileRef(input, refImagePath, apiKey, baseURL, controller);
+    let useReferenceImages = providerSupportsImageEdits(input.provider, input.model);
+    if (refImagePath && useReferenceImages) {
+      try {
+        return await generateWithFileRef(input, refImagePath, apiKey, baseURL, controller);
+      } catch (error) {
+        if (!shouldFallbackFromEditsError(error)) throw error;
+        useReferenceImages = false;
+        console.warn(
+          `[image.provider] edits unsupported for provider=${input.provider}; fallback to text-to-image generations. detail=${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
 
-    const requestBody = buildImageGenerationRequestBody(input);
+    const requestBody = buildImageGenerationRequestBody({
+      ...input,
+      // 不支持 edits / 已回退时，不要把参考图塞进 generations
+      refImages: useReferenceImages ? input.refImages : undefined,
+    });
 
     const response = await fetch(`${baseURL}/images/generations`, {
       method: "POST",

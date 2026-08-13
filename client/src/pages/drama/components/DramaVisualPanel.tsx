@@ -18,6 +18,7 @@ import {
 } from "@/api/drama";
 import type { ImageGenerationOverrides } from "@/api/comic";
 import { getAPIKeySettings } from "@/api/settings";
+import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Button } from "@/components/ui/button";
@@ -141,6 +142,7 @@ export function DramaVisualPanel(props: {
   return (
     <div className="space-y-4">
       <ImageGenerationConfirmDialog {...keyframeFlow.dialogProps} />
+      <ImageCandidateSelectionDialog {...keyframeFlow.selectionDialogProps} />
       <div className="grid gap-3 md:grid-cols-6">
         <div className="rounded-md border p-3 text-sm">
           <div className="text-xs text-muted-foreground">当前提示词</div>

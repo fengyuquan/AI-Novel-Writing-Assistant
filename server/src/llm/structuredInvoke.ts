@@ -14,6 +14,7 @@ import {
   buildStructuredResponseFormat,
   classifyStructuredOutputFailure,
   extractStructuredOutputErrorCategory,
+  humanizeLlmProviderErrorMessage,
   resolveStructuredOutputProfile,
   schemaAllowsTopLevelArray,
   selectStructuredOutputStrategy,
@@ -24,7 +25,7 @@ import {
 } from "./structuredOutput";
 import { getStructuredFallbackSettings } from "./structuredFallbackSettings";
 import { extractLlmTokenUsage, mergeStreamTokenUsage } from "./usageTracking";
-import { runWithEnforcedTimeout } from "./invokeTimeout";
+import { mergeAbortSignals, runWithEnforcedTimeout } from "./invokeTimeout";
 import { beginLlmLiveSession } from "../platform/llm/live/llmLiveSession";
 import {
   buildStructuredError,
@@ -196,10 +197,6 @@ async function invokeStructuredAttempt<T>(input: {
   if (responseFormat) {
     invokeOptions.response_format = responseFormat;
   }
-  if (input.baseInput.signal) {
-    invokeOptions.signal = input.baseInput.signal;
-  }
-
   const messages = buildInvokeMessages(input.baseInput);
   logStructuredInvokeEvent({
     event: "invoke_start",
@@ -219,12 +216,16 @@ async function invokeStructuredAttempt<T>(input: {
     provider: resolved.provider,
     model: resolved.model,
   });
+  const effectiveSignal = mergeAbortSignals(input.baseInput.signal, liveSession.signal);
+  if (effectiveSignal) {
+    invokeOptions.signal = effectiveSignal;
+  }
   try {
     liveSession.phase("streaming", "模型正在返回结构化结果");
     const collected = await runWithEnforcedTimeout({
       label: input.baseInput.label,
       timeoutMs: input.baseInput.timeoutMs,
-      signal: input.baseInput.signal,
+      signal: effectiveSignal,
       run: async (signal) => {
         const stream = await llm.stream(
           messages,
@@ -233,6 +234,9 @@ async function invokeStructuredAttempt<T>(input: {
         let rawContent = "";
         let tokenUsage = null;
         for await (const chunk of stream) {
+          if (liveSession.isCancelled() || signal?.aborted) {
+            throw signal?.reason ?? new Error("用户已中断本次模型请求");
+          }
           const content = toText(chunk.content);
           rawContent += content;
           liveSession.delta(content);
@@ -267,7 +271,7 @@ async function invokeStructuredAttempt<T>(input: {
       temperature: resolved.temperature,
       maxTokens: resolved.maxTokens,
       timeoutMs: input.baseInput.timeoutMs,
-      signal: input.baseInput.signal,
+      signal: effectiveSignal,
       taskType: input.baseInput.taskType,
       requestProtocol: resolved.requestProtocol,
       label: input.baseInput.label,
@@ -289,7 +293,7 @@ async function invokeStructuredAttempt<T>(input: {
     liveSession.complete();
     return parsed;
   } catch (error) {
-    liveSession.fail(error);
+    liveSession.finishWithError(error);
     const category = error instanceof StructuredOutputError
       ? error.category
       : classifyStructuredOutputFailure({ error });
@@ -459,7 +463,7 @@ export function summarizeStructuredOutputFailure(input: {
     incomplete_json: incompleteJsonSummary,
     malformed_json: `模型输出的 JSON 格式不稳定${suffix}`,
     schema_mismatch: `模型输出未满足目标结构要求${suffix}`,
-    transport_error: `结构化调用过程发生传输或服务端错误${suffix}`,
+    transport_error: humanizeLlmProviderErrorMessage(message) || `结构化调用过程发生传输或服务端错误${suffix}`,
   };
   return {
     category,

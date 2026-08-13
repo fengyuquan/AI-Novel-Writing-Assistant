@@ -3805,7 +3805,7 @@ model DramaBatchJob {
   id        String   @id @default(cuid())
   projectId String
   episodeId String?
-  // keyframes/videos/tts/full_episode
+  // keyframes/videos/tts/prompt_pack/full_episode
   type      String
   // pending/running/paused/done/failed
   status    String   @default("pending")

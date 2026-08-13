@@ -48,11 +48,45 @@
 
 微调生成成功后仍遵守版本归档规则：旧三视图进入 history，新图成为当前三视图。不要新增本地上传链路来替代这个默认路径；本阶段的“原角色图参考”指当前已生成三视图。
 
+## Manual Image Intervention
+
+漫画项目页顶部可勾选「人工干预生成图片」（本地偏好，不写库）。勾选后，凡走统一生图确认弹窗的入口（三视图、表情稿、资产、场景、格子图）会改为：
+
+1. 仍先 `prepare` 拿到提示词与参考素材；
+2. 弹窗展示可复制提示词，以及粘贴 / 上传结果图；
+3. 不调用图像模型的 `generate`，改为对应 `upload` 接口落盘。
+
+这是图像网关不稳定时的临时生产路径，不替代正式 AI 生图。
+
+## Upload Or Paste Character Sheet
+
+三视图除 AI 生成外，还支持本地上传和剪贴板粘贴，入口与场景设定图一致：上传文件、粘贴按钮，以及在预览区 `Ctrl+V`。后端为 `POST /api/comic/characters/:charId/sheet/upload`，请求体为原始图片字节，`Content-Type` 为 `image/png|jpeg|webp`。
+
+上传规则：
+
+- 成功后 `sheetData.status=done`，并标记 `origin:"uploaded"`；AI 生成路径标记 `origin:"generated"`。
+- 若当前已有完成态三视图，先按现有版本规则归档到 `history`，再写入新主图。
+- 主图变更后清理 `derived` 面部裁切缓存；表情稿状态暂保留，用户可按需重新生成。
+- 外貌锚点与角色资产库不受影响。
+
+## Clear Character Sheet
+
+用户可以把角色三视图状态清回生成前的 `idle`，而不是只能在已有图上微调。入口在角色详情的「清除三视图」；后端为 `DELETE /api/comic/characters/:charId/sheet`。
+
+清除规则：
+
+- `sheetData` 重置为 `{ status: "idle" }`，同时移除嵌套的表情稿状态。
+- 删除本地 `character-sheet*`、`character-expression*` 与 `derived` 派生图；历史版本一并清理。
+- 外貌锚点、`ComicCharacterAsset` 资产库条目不受影响。
+- 三视图或表情稿处于 `generating` 时拒绝清除，避免与进行中的生图竞态。
+
+清除后的 UI 应回到「还没有三视图」的首次生成入口，让用户可以重新走完整生成流程。
+
 ## Character Workspace UI
 
-角色资产页采用“左侧角色列表 + 右侧当前角色详情”的工作台结构。左侧只承担选择和状态速览，右侧集中展示当前角色的三视图、表情稿、外貌锚点、三视图提示词和微调入口。
+角色资产页采用“左侧角色列表 + 右侧当前角色详情”的工作台结构。左侧只承担选择和状态速览，右侧集中展示当前角色的三视图、表情稿、外貌锚点、三视图提示词，以及生成 / 上传 / 粘贴 / 微调 / 清除入口。
 
-这个结构服务角色生产任务，而不是展示卡片墙：用户每次只需要判断一个当前角色是否具备主设计稿、表情稿和可复用提示词。已有三视图的角色应在详情区打开提示词微调；未生成三视图的角色只保留明确的生成主入口，表情稿入口应在主设计稿可用后再开放。
+这个结构服务角色生产任务，而不是展示卡片墙：用户每次只需要判断一个当前角色是否具备主设计稿、表情稿和可复用提示词。已有三视图的角色应在详情区打开提示词微调，并提供上传替换、清除后重做的路径；未准备三视图的角色应同时看到生成、上传和粘贴入口，表情稿入口应在主设计稿可用后再开放。
 
 生成分格脚本前，前端应提示缺少三视图的角色。该提示不是硬阻断，因为分格脚本仍可依赖 `visualAnchor` 文本继续生成；但它应明确告诉用户，缺少三视图会降低后续格子图的外貌一致性。这个提示属于制作准备状态，不应替代后端的角色引用和参考图注入规则。
 
@@ -110,6 +144,28 @@
 - 如果 `characterRefs` 回退为字符串数组，系统会兼容读取，并按 `default + neutral` 处理，但新脚本应输出对象结构。
 - 如果 `appearance` 含大量与期望脸型矛盾的人设词（"锐利如刀刻""三角眼"）且用户只在 `appearance` 末尾追加"圆脸"，模型仍会被前置/数量更多的锐利词主导。应使用 `faceShapeOverride` 字段，或调用 AI 协助重写做矛盾消除。
 - 如果 `characterRefs[].props` 引用了不存在的资产名，雪碧图合成会跳过该道具，prompt 中只保留文字"持有 X"，不阻断生图。
+
+## Multi-image Selection
+
+当上游图像 API 在 `data` 中返回多张图（`b64_json` / `url`）时：
+
+1. 单张：按原路径直接落盘，状态 `done`。
+2. 多张：候选写入临时目录，状态变为 `awaiting_selection`，接口返回 `selectionId` + `candidates[]`。
+3. 前端弹出选图窗；用户确认后调用 `POST /api/image-runtime/selections/:selectionId/apply`，再真正落盘为成品。
+
+确认弹窗可设置 `countOverride`（1–4）请求多张；即使请求 1 张，上游若仍返回多张也会进入同一选择流程。候选暂存约 30 分钟过期。
+
+落盘后的状态会保留 `selectionId` / `candidates` / `selectedIndex`，候选文件在磁盘缓存约 7 天，便于「改选」。选图弹窗支持放大预览。格子图展示 URL 必须带 `version`（或 `generatedAt`）查询参数做缓存破坏，否则重抽/选图后浏览器可能继续显示旧图。
+
+相关实现：`server/src/services/image/runtime/`、`client/src/components/image/ImageCandidateSelectionDialog.tsx`、`useImageGenerationFlow`。
+
+## Text-to-image Task Lead
+
+漫画图像最终 prompt 必须以任务特征声明开头：本请求是**纯文生图**，不依赖 `/images/edits` 图生图。角色外貌、场景圣经、构图与镜头约束必须写进文字。
+
+- Provider 侧：`custom_provider*`、`grok`，以及模型名含 `gpt-image` / `yuanbao` 的请求，统一走 `/images/generations`（服务端生成后在接口返回 `b64_json` 或 `url`），不调用 `/images/edits`。
+- 其他 provider 若 edits 返回不支持类错误，自动回退 `generations`。
+- 有参考图时，前端仍可展示素材溯源；实际调用不支持 edits 的接口时只发送文字 prompt。
 
 ## Related Modules
 

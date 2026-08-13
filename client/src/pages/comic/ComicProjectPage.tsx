@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +14,7 @@ import {
   Hash,
   Users,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import {
   exportComicEpisode,
@@ -24,17 +25,39 @@ import {
   type ComicProject,
 } from "@/api/comic";
 import { ComicImageGenerationNotice } from "@/pages/comic/ComicImageGenerationNotice";
+import ComicWorkspaceGuideCard from "@/pages/comic/ComicWorkspaceGuideCard";
+import { resolveComicWorkspaceGuide, type ComicGuideTab } from "@/pages/comic/comicWorkspaceGuide";
 import { COMIC_FORMATS } from "@/pages/comic/ComicWorkspacePage";
 import { CharactersPanel } from "@/pages/comic/project/CharactersPanel";
 import { ScenesPanel } from "@/pages/comic/project/ScenesPanel";
 import { EpisodeListPanel } from "@/pages/comic/project/EpisodeListPanel";
 import { PanelsGridPanel } from "@/pages/comic/project/PanelsGridPanel";
-import { getAPIKeySettings } from "@/api/settings";
+import {
+  getAPIKeySettings,
+  getImageSelectionSetting,
+  refreshProviderModelList,
+  saveImageSelectionSetting,
+  type APIKeyStatus,
+} from "@/api/settings";
+import type { LLMProvider } from "@ai-novel/shared/types/llm";
+import { patchApiKeyImageModels } from "@/lib/imageSelectionRefresh";
+import { queryKeys } from "@/api/queryKeys";
+import {
+  isImageCapableProvider,
+  listImageModelsForProvider,
+  resolveDefaultImageModel,
+} from "@/lib/imageSelection";
+import {
+  isManualImageInterventionEnabled,
+  setManualImageInterventionEnabled,
+  subscribeManualImageIntervention,
+} from "@/lib/manualImageIntervention";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import SelectControl from "@/components/common/SelectControl";
+import { Input } from "@/components/ui/input";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -108,14 +131,14 @@ export default function ComicProjectPage() {
   const queryClient = useQueryClient();
   const [showFormatPicker, setShowFormatPicker] = useState(false);
   const [showStylePicker, setShowStylePicker] = useState(false);
-  // 图片模型选择跨项目/跨刷新保留（用户通常长期用同一个图片模型）
-  const [selectedProvider, setSelectedProvider] = useState<string>(() => {
-    try { return localStorage.getItem("comic.preferredImageProvider") ?? ""; } catch { return ""; }
-  });
-  const handleProviderChange = (value: string) => {
-    setSelectedProvider(value);
-    try { localStorage.setItem("comic.preferredImageProvider", value); } catch { /* ignore */ }
-  };
+  const [activeTab, setActiveTab] = useState<ComicGuideTab>("outline");
+  // 页内临时覆盖；持久默认值来自系统设置「默认图片模型」
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [manualImageIntervention, setManualImageIntervention] = useState(() => isManualImageInterventionEnabled());
+  const legacyImageProviderMigratedRef = useRef(false);
+
+  useEffect(() => subscribeManualImageIntervention(setManualImageIntervention), []);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["comic", "project", id],
@@ -129,19 +152,114 @@ export default function ComicProjectPage() {
     enabled: Boolean(id),
   });
 
-  const { data: providerOptions = [] } = useQuery({
-    queryKey: ["settings", "api-keys"],
+  const { data: imageProviders = [] } = useQuery({
+    queryKey: queryKeys.settings.apiKeys,
     queryFn: getAPIKeySettings,
-    select: (res) =>
-      (res.data ?? [])
-        .filter((p) => p.supportsImageGeneration && p.isConfigured)
-        .map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
+    select: (res) => (res.data ?? []).filter(isImageCapableProvider),
   });
-  // 缓存的 provider 仍存在于可用列表才用，否则回退到第一个（避免引用已失效的 provider 配置）
+
+  const { data: imageSelection, isFetched: imageSelectionFetched } = useQuery({
+    queryKey: queryKeys.settings.imageSelection,
+    queryFn: getImageSelectionSetting,
+    select: (res) => res.data,
+  });
+
+  const savedImageProvider = imageSelection?.provider ?? "";
+  const savedImageModel = imageSelection?.model ?? "";
+
+  const saveImageSelectionMut = useMutation({
+    mutationFn: (payload: { provider: string; model: string }) => saveImageSelectionSetting(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings.imageSelection });
+    },
+    onError: (e) => toast.error(String(e)),
+  });
+
   const resolvedProvider =
-    (selectedProvider && providerOptions.some((p) => p.value === selectedProvider))
+    (selectedProvider && imageProviders.some((p) => p.provider === selectedProvider))
       ? selectedProvider
-      : providerOptions[0]?.value || "";
+      : (savedImageProvider && imageProviders.some((p) => p.provider === savedImageProvider))
+        ? savedImageProvider
+        : imageProviders[0]?.provider || "";
+
+  const selectedMeta: APIKeyStatus | undefined = imageProviders.find((p) => p.provider === resolvedProvider);
+  const modelOptions = listImageModelsForProvider(selectedMeta);
+  const resolvedModel = resolveDefaultImageModel(
+    selectedMeta,
+    selectedModel || (savedImageProvider === resolvedProvider ? savedImageModel : undefined),
+  );
+
+  // 一次性把旧的浏览器本地偏好迁到系统设置
+  useEffect(() => {
+    if (legacyImageProviderMigratedRef.current) return;
+    if (!imageSelectionFetched || savedImageProvider || imageProviders.length === 0) return;
+    try {
+      const legacy = localStorage.getItem("comic.preferredImageProvider") ?? "";
+      const legacyMeta = imageProviders.find((item) => item.provider === legacy);
+      if (!legacyMeta) {
+        legacyImageProviderMigratedRef.current = true;
+        return;
+      }
+      const model = resolveDefaultImageModel(legacyMeta);
+      if (!model) {
+        legacyImageProviderMigratedRef.current = true;
+        return;
+      }
+      legacyImageProviderMigratedRef.current = true;
+      saveImageSelectionMut.mutate({ provider: legacy, model });
+      localStorage.removeItem("comic.preferredImageProvider");
+    } catch {
+      legacyImageProviderMigratedRef.current = true;
+    }
+  }, [imageSelectionFetched, savedImageProvider, imageProviders, saveImageSelectionMut]);
+
+  const persistImageSelection = (provider: string, model: string) => {
+    if (!provider || !model) return;
+    saveImageSelectionMut.mutate({ provider, model });
+  };
+
+  const handleProviderChange = (value: string) => {
+    const nextMeta = imageProviders.find((item) => item.provider === value);
+    const nextModel = resolveDefaultImageModel(nextMeta);
+    setSelectedProvider(value);
+    setSelectedModel(nextModel);
+    persistImageSelection(value, nextModel);
+  };
+
+  const handleModelChange = (value: string) => {
+    setSelectedModel(value);
+    persistImageSelection(resolvedProvider, value);
+  };
+
+  const refreshImageModelsMut = useMutation({
+    mutationFn: () => refreshProviderModelList(resolvedProvider as LLMProvider),
+    onSuccess: (response) => {
+      const refreshed = response.data;
+      if (!refreshed) {
+        toast.error("没有收到模型列表");
+        return;
+      }
+      patchApiKeyImageModels(
+        queryClient,
+        refreshed.provider as LLMProvider,
+        refreshed.imageModels ?? [],
+        refreshed.currentImageModel,
+      );
+      const nextOptions = Array.from(new Set([
+        ...(refreshed.imageModels ?? []),
+        refreshed.currentImageModel ?? "",
+      ].filter(Boolean)));
+      const nextModel = nextOptions.includes(resolvedModel)
+        ? resolvedModel
+        : (refreshed.currentImageModel || nextOptions[0] || "");
+      if (nextModel) {
+        setSelectedModel(nextModel);
+        persistImageSelection(resolvedProvider, nextModel);
+      }
+      toast.success(response.message ?? "图像模型列表已刷新");
+    },
+    onError: (e) => toast.error(String(e)),
+  });
 
   const presetMut = useMutation({
     mutationFn: (payload: Parameters<typeof updateComicPreset>[1]) => updateComicPreset(id!, payload),
@@ -153,6 +271,15 @@ export default function ComicProjectPage() {
     },
     onError: (e) => toast.error(String(e)),
   });
+
+  const workspaceGuide = useMemo(() => {
+    if (!project) return null;
+    return resolveComicWorkspaceGuide({
+      project,
+      episodes,
+      hasImageProvider: Boolean(resolvedProvider),
+    });
+  }, [project, episodes, resolvedProvider]);
 
   if (isLoading) {
     return (
@@ -188,6 +315,13 @@ export default function ComicProjectPage() {
       </div>
 
       <ComicImageGenerationNotice />
+
+      {workspaceGuide ? (
+        <ComicWorkspaceGuideCard
+          guide={workspaceGuide}
+          onGoToTab={(tab) => setActiveTab(tab)}
+        />
+      ) : null}
 
       {/* 项目信息头部 */}
       <div className="rounded-xl border bg-card p-5 space-y-4">
@@ -348,27 +482,85 @@ export default function ComicProjectPage() {
               {formatDef.tag}
             </span>
           )}
-          {/* 图片模型全局选择器 */}
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground whitespace-nowrap">图片模型</span>
-            {providerOptions.length === 0 ? (
-              <span className="text-xs text-destructive">暂无可用图片服务</span>
+          {/* 默认图片模型（与系统设置同步） */}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <label
+              className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs text-foreground"
+              title="勾选后，生图会弹出提示词窗口，改用粘贴/上传完成，不调用图像模型"
+            >
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5"
+                checked={manualImageIntervention}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  setManualImageIntervention(enabled);
+                  setManualImageInterventionEnabled(enabled);
+                }}
+              />
+              人工干预生成图片
+            </label>
+            <span className="text-xs text-muted-foreground whitespace-nowrap" title="与系统设置中的默认图片模型同步；文本类生成仍使用顶部模型">
+              图片供应商
+            </span>
+            {imageProviders.length === 0 ? (
+              <span className="text-xs text-destructive">暂无可用图片服务，请先在系统设置配置</span>
             ) : (
-              <SelectControl
-                className="rounded-md border bg-background px-2.5 py-1 text-xs"
-                value={resolvedProvider}
-                onChange={(e) => handleProviderChange(e.target.value)}
-              >
-                {providerOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </SelectControl>
+              <>
+                <SelectControl
+                  className="rounded-md border bg-background px-2.5 py-1 text-xs"
+                  value={resolvedProvider}
+                  onChange={(e) => handleProviderChange(e.target.value)}
+                >
+                  {imageProviders.map((opt) => (
+                    <option key={opt.provider} value={opt.provider}>
+                      {opt.displayName ?? opt.name}
+                    </option>
+                  ))}
+                </SelectControl>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">图像模型</span>
+                {modelOptions.length > 0 ? (
+                  <SelectControl
+                    className="rounded-md border bg-background px-2.5 py-1 text-xs min-w-[10rem]"
+                    value={resolvedModel}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                  >
+                    {modelOptions.map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </SelectControl>
+                ) : (
+                  <Input
+                    className="h-8 w-44 text-xs"
+                    value={resolvedModel}
+                    placeholder="例如 gpt-image-2"
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    onBlur={() => persistImageSelection(resolvedProvider, resolvedModel)}
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  disabled={!resolvedProvider || refreshImageModelsMut.isPending}
+                  onClick={() => refreshImageModelsMut.mutate()}
+                  title="刷新当前供应商的图像模型列表"
+                >
+                  {refreshImageModelsMut.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  刷新
+                </Button>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="outline">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ComicGuideTab)}>
         <TabsList className="w-full justify-start gap-1">
           <TabsTrigger value="outline">分话大纲</TabsTrigger>
           <TabsTrigger value="characters">

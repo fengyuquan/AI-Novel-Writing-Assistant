@@ -462,7 +462,6 @@ export default function NovelAutoDirectorProgressPanel({
         <div className="mb-4 flex justify-end">
           <LiveExecutionDialog
             taskId={runtimeTaskId}
-            autoOpenOnActivity
           />
         </div>
         <NovelDirectorPreparationJourney

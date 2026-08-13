@@ -16,6 +16,10 @@ export type StyleBenchmarkCacheSession = ChapterEditorStyleBenchmarkCacheSession
 
 export interface StyleBenchmarkPrefs {
   layoutColumns: StyleBenchmarkLayoutColumns;
+  /** 已关闭「对照三步引导」 */
+  hideCompareGuide?: boolean;
+  /** 已关闭「段数错位对齐提示」 */
+  hideAlignTip?: boolean;
 }
 
 function storageKey(novelId: string, chapterId: string): string {
@@ -96,7 +100,11 @@ export function loadStyleBenchmarkPrefs(): StyleBenchmarkPrefs {
       return { layoutColumns: 1 };
     }
     const parsed = JSON.parse(raw) as Partial<StyleBenchmarkPrefs>;
-    return { layoutColumns: normalizeLayoutColumns(parsed.layoutColumns) };
+    return {
+      layoutColumns: normalizeLayoutColumns(parsed.layoutColumns),
+      hideCompareGuide: Boolean(parsed.hideCompareGuide),
+      hideAlignTip: Boolean(parsed.hideAlignTip),
+    };
   } catch {
     return { layoutColumns: 1 };
   }
@@ -109,10 +117,21 @@ export function saveStyleBenchmarkPrefs(prefs: StyleBenchmarkPrefs): void {
   try {
     window.localStorage.setItem(PREFS_KEY, JSON.stringify({
       layoutColumns: normalizeLayoutColumns(prefs.layoutColumns),
+      hideCompareGuide: Boolean(prefs.hideCompareGuide),
+      hideAlignTip: Boolean(prefs.hideAlignTip),
     } satisfies StyleBenchmarkPrefs));
   } catch {
     // ignore
   }
+}
+
+export function patchStyleBenchmarkPrefs(patch: Partial<StyleBenchmarkPrefs>): StyleBenchmarkPrefs {
+  const next = {
+    ...loadStyleBenchmarkPrefs(),
+    ...patch,
+  };
+  saveStyleBenchmarkPrefs(next);
+  return next;
 }
 
 function migrateLegacySession(

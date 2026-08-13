@@ -49,6 +49,12 @@ test("opens setup only when a resolved status says configuration is required", (
     readyForCreation: false,
     pathname: "/creative-hub",
   }), true);
+  assert.equal(shouldOpenSetupPromptForRoute({
+    statusResolved: true,
+    readyForCreation: false,
+    pathname: "/creative-hub",
+    dismissed: true,
+  }), false);
 });
 
 test("shows the first novel handoff only after automatic configuration succeeds", () => {

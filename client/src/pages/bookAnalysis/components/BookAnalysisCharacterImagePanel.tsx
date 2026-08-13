@@ -12,6 +12,7 @@ import {
 } from "@/api/bookAnalysis";
 import { getImageTask, resolveImageAssetUrl } from "@/api/images";
 import { queryKeys } from "@/api/queryKeys";
+import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Badge } from "@/components/ui/badge";
@@ -118,6 +119,7 @@ export default function BookAnalysisCharacterImagePanel({
   return (
     <div className="mt-5 space-y-4 border-t border-border/35 pt-4">
       <ImageGenerationConfirmDialog {...flow.dialogProps} />
+      <ImageCandidateSelectionDialog {...flow.selectionDialogProps} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-medium">形象图</span>

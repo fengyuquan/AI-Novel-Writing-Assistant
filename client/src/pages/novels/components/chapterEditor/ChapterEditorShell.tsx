@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ChapterEditorDiagnosticCard,
@@ -255,6 +255,26 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
     setSyncStatus,
     onSynced: invalidateChapterQueries,
   });
+
+  const saveMutationRef = useRef(saveMutation);
+  const syncSaveMutationRef = useRef(syncSaveMutation);
+  const savedContentRef = useRef(savedContent);
+  saveMutationRef.current = saveMutation;
+  syncSaveMutationRef.current = syncSaveMutation;
+  savedContentRef.current = savedContent;
+
+  const handleAutoSaveContent = useCallback((content: string) => {
+    if (!chapter) {
+      return;
+    }
+    if (saveMutationRef.current.isPending || syncSaveMutationRef.current.isPending) {
+      return;
+    }
+    if (content === savedContentRef.current) {
+      return;
+    }
+    saveMutationRef.current.mutate({ content, silent: true });
+  }, [chapter]);
 
   const previewMutation = useMutation({
     mutationFn: async (request: ReturnType<typeof buildAiRevisionRequest>) => {
@@ -534,7 +554,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
       if (event.key.toLowerCase() === "s") {
         event.preventDefault();
         if (isDirty && !saveMutation.isPending && !syncSaveMutation.isPending) {
-          saveMutation.mutate(contentDraft);
+          saveMutation.mutate({ content: contentDraft });
         }
         return;
       }
@@ -654,6 +674,9 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
           setSaveStatus("idle");
         }}
         isDirty={isDirty}
+        contentSaveStatus={saveStatus}
+        isSavingContent={saveMutation.isPending}
+        onAutoSaveContent={handleAutoSaveContent}
         hasSelection={Boolean(selection?.text.trim())}
         isGeneratingStuck={previewMutation.isPending}
         selectedDiagnosticId={selectedDiagnosticId}
@@ -838,7 +861,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
               type="button"
               className="h-11 min-h-11 w-full text-base"
               disabled={!isDirty || saveMutation.isPending}
-              onClick={() => saveMutation.mutate(contentDraft)}
+              onClick={() => saveMutation.mutate({ content: contentDraft })}
             >
               {saveMutation.isPending ? "保存中..." : "保存本章"}
             </Button>
@@ -913,6 +936,8 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
       isResolvingIssue={resolveIssueMutation.isPending}
       auditResult={auditResult}
       auditErrorMessage={auditErrorMessage}
+      contentSaveStatus={saveStatus}
+      onAutoSaveContent={handleAutoSaveContent}
       aiWritingDetectResult={aiWritingDetectResult}
       aiWritingDetectErrorMessage={aiWritingDetectErrorMessage}
       isRunningAiWritingDetect={aiWritingDetectMutation.isPending}
@@ -939,7 +964,7 @@ export default function ChapterEditorShell(props: ChapterEditorShellProps) {
       onToggleAiPanel={() => setAiPanelOpen((current) => !current)}
       onCollapseAiPanel={() => setAiPanelOpen(false)}
       onToggleAiDetect={() => setAiDetectOpen((current) => !current)}
-      onSave={() => saveMutation.mutate(contentDraft)}
+      onSave={() => saveMutation.mutate({ content: contentDraft })}
       onSyncSave={() => syncSaveMutation.mutate(contentDraft)}
       onRunAiWritingDetect={() => {
         setAiDetectOpen(true);

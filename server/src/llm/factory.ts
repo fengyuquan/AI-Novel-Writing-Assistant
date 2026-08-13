@@ -3,6 +3,7 @@ import type { ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
 import { ChatOpenAI } from "@langchain/openai";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
 import { secretStore } from "../services/settings/secretStore";
+import { getLLMSelectionSettings } from "../services/settings/LLMSelectionSettingsService";
 import { resolveModelTemperature } from "./capabilities";
 import { createAnthropicLLM } from "./anthropicClient";
 import { attachLLMDebugLogging } from "./debugLogging";
@@ -209,12 +210,30 @@ export async function resolveLLMClientOptions(
   if (options.taskType) {
     const hasExplicitProvider = provider != null;
     const hasExplicitModel = options.model != null;
-    const shouldUseRouteProvider = !hasExplicitProvider && !hasExplicitModel;
+    let shouldUseRouteProvider = !hasExplicitProvider && !hasExplicitModel;
+
+    // Prefer the saved UI LLM selection over hardcoded DeepSeek / task-route defaults
+    // when the caller did not pass an explicit provider/model (e.g. drama pipelines).
+    if (shouldUseRouteProvider) {
+      const selection = await getLLMSelectionSettings();
+      if (selection?.provider && selection.model) {
+        resolvedProvider = selection.provider;
+        resolvedModel = normalizeOptionalText(selection.model);
+        if (options.temperature == null) {
+          resolvedTemperature = selection.temperature;
+        }
+        if (options.maxTokens == null && selection.maxTokens != null) {
+          resolvedMaxTokens = selection.maxTokens;
+        }
+        shouldUseRouteProvider = false;
+      }
+    }
+
     const route = await resolveModel(options.taskType, {
       ...(shouldUseRouteProvider ? {} : { provider: resolvedProvider }),
-      ...(options.model != null ? { model: options.model } : {}),
-      ...(options.temperature != null ? { temperature: options.temperature } : {}),
-      ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
+      ...((options.model != null || resolvedModel != null) ? { model: options.model ?? resolvedModel } : {}),
+      ...(resolvedTemperature != null ? { temperature: resolvedTemperature } : {}),
+      ...(resolvedMaxTokens != null ? { maxTokens: resolvedMaxTokens } : {}),
     });
     if (shouldUseRouteProvider) {
       resolvedProvider = route.provider;
@@ -222,10 +241,10 @@ export async function resolveLLMClientOptions(
     if (options.model == null && shouldUseRouteProvider) {
       resolvedModel = normalizeOptionalText(route.model);
     }
-    if (options.temperature == null) {
+    if (options.temperature == null && resolvedTemperature == null) {
       resolvedTemperature = route.temperature;
     }
-    if (options.maxTokens == null) {
+    if (options.maxTokens == null && resolvedMaxTokens == null) {
       resolvedMaxTokens = route.maxTokens;
     }
     if (options.requestProtocol == null) {
@@ -239,6 +258,18 @@ export async function resolveLLMClientOptions(
     }
     resolvedModelRoute = route.routeKey;
     resolvedRouteDegraded = route.routeDegraded;
+  } else if (provider == null && options.fallbackProvider == null && options.model == null) {
+    const selection = await getLLMSelectionSettings();
+    if (selection?.provider && selection.model) {
+      resolvedProvider = selection.provider;
+      resolvedModel = normalizeOptionalText(selection.model);
+      if (options.temperature == null) {
+        resolvedTemperature = selection.temperature;
+      }
+      if (options.maxTokens == null && selection.maxTokens != null) {
+        resolvedMaxTokens = selection.maxTokens;
+      }
+    }
   }
 
   const dbSecret = await resolveProviderSecret(resolvedProvider);

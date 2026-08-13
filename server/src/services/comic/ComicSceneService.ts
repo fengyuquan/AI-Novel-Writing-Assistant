@@ -16,6 +16,7 @@ import { resolveGeneratedImagesRoot } from "../../runtime/appPaths";
 import { runImageGeneration, safeJsonParse, type ImageTargetAdapter } from "../image/runtime";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { resolveComicStyleKeywords } from "./comicStylePrompt";
+import { applyComicTextToImageTaskLead, buildComicTextToImageTaskLead } from "./comicImageTaskPrompt";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ function buildSceneSheetPrompt(params: {
   const { name, sceneType, bible, stylePrefix } = params;
   // 十字分割的 2x2 四宫格场景参考图：一张图同时给出四个视角，作参考时信息量最大
   const lines: string[] = [
+    buildComicTextToImageTaskLead("scene_sheet"),
     stylePrefix ?? "webtoon style, vibrant colors, clean lines",
     `location reference sheet of a ${sceneType} scene: ${name}`,
     "ONE single square image divided by a cross into a 2x2 grid of four quadrants",
@@ -249,7 +251,7 @@ export class ComicSceneService {
     return {
       kind: ctx.adapter.kind,
       title: ctx.title,
-      prompt: ctx.prompt,
+      prompt: applyComicTextToImageTaskLead(ctx.prompt, "scene_sheet", false),
       referenceImages: [],
       provider: provider ?? "openai",
       size: ctx.size,
@@ -260,12 +262,19 @@ export class ComicSceneService {
     sceneId: string,
     provider?: string,
     overrides?: import("../image/runtime").ImageGenerationOverrides,
-  ): Promise<void> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult> {
     const ctx = await this.buildSceneGenerationContext(sceneId);
-    await runImageGeneration(ctx.adapter, {
+    const prompt = applyComicTextToImageTaskLead(
+      overrides?.promptOverride ?? ctx.prompt,
+      "scene_sheet",
+      false,
+    );
+    return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
-      prompt: overrides?.promptOverride ?? ctx.prompt,
+      model: overrides?.modelOverride,
+      prompt,
       size: overrides?.sizeOverride ?? ctx.size,
+      count: overrides?.countOverride ?? 1,
     });
   }
 

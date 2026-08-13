@@ -589,6 +589,8 @@ export const dramaStoryboardPrompt: PromptAsset<{
     new SystemMessage([
       "你是竖屏短剧分镜师。把台本拆成可拍摄镜头序列，优先近景、中近景、强表情和明确动作。",
       "每个镜头必须能服务冲突推进，避免空镜和环境铺陈。",
+      "人物一致性：同一角色跨镜必须保持同一外形；visualPrompt 要写入角色视觉锚点原文。",
+      "dialogue 只允许角色说出口的短对白，禁止旁白、画外音、叙述句；无对白则省略。",
       "只输出符合 schema 的 JSON。",
     ].join("\n")),
     new HumanMessage([

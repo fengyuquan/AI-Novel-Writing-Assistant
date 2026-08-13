@@ -23,6 +23,7 @@ import {
   type SceneSheetData,
   type SceneType,
 } from "@/api/comic";
+import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Button } from "@/components/ui/button";
@@ -147,6 +148,7 @@ function SceneDetail({
     flow.start({
       prepare: () => prepareComicSceneImage(scene.id, provider || undefined),
       generate: (overrides) => generateComicSceneImage(scene.id, provider || undefined, overrides),
+      upload: (file) => uploadComicSceneImage(scene.id, file),
       onSuccess: () => onChanged(),
       onError: () => onChanged(),
     });
@@ -169,6 +171,7 @@ function SceneDetail({
   return (
     <>
       <ImageGenerationConfirmDialog {...flow.dialogProps} />
+      <ImageCandidateSelectionDialog {...flow.selectionDialogProps} />
       <section className="min-w-0 overflow-hidden rounded-lg border bg-background">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
         <div className="min-w-0 flex-1 space-y-2">

@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BookOpenText,
   FilePen,
+  FileUp,
   Layers3,
   Plus,
   Sparkles,
@@ -26,13 +27,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import SelectControl from "@/components/common/SelectControl";
+import { isTxtFile, readTextFile } from "@/lib/textFile";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SOURCE_LABELS: Record<ComicSourceType, string> = {
   novel_import: "导入小说",
   original: "原创灵感",
-  text_import: "文本导入",
+  text_import: "TXT/文本导入",
   comic_import: "漫画改编",
 };
 
@@ -400,18 +402,71 @@ function CreateWizard({ onCreated }: { onCreated: (id: string) => void }) {
                 />
               </div>
             )}
-            {form.sourceType === "text_import" && (
-              <div className="space-y-1">
-                <label className="text-sm font-medium">粘贴原文</label>
-                <textarea
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-y min-h-[160px]"
-                  placeholder="粘贴完整小说原文（最多 20 万字）…"
-                  rows={8}
-                  value={form.rawText}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, rawText: e.target.value }))}
-                />
+{form.sourceType === "text_import" && (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">导入 txt 小说</label>
+                  <p className="text-xs text-muted-foreground">
+                    可直接选择本地 .txt 小说文件，系统会自动识别常见编码并填入原文。
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      type="file"
+                      accept=".txt,text/plain"
+                      className="max-w-md cursor-pointer text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (!file) return;
+                        if (!isTxtFile(file)) {
+                          toast.error("仅支持 .txt 文本文件");
+                          return;
+                        }
+                        try {
+                          const text = await readTextFile(file);
+                          if (!text.trim()) {
+                            toast.error("文件内容为空，请换一份小说文本再试");
+                            return;
+                          }
+                          const clipped = text.slice(0, 200000);
+                          const fallbackTitle = file.name.replace(/\.txt$/i, "");
+                          setForm((f) => ({
+                            ...f,
+                            rawText: clipped,
+                            title: f.title.trim() || fallbackTitle,
+                          }));
+                          toast.success(
+                            clipped.length < text.length
+                              ? "已导入 txt，原文较长已截取前 20 万字（" + file.name + "）"
+                              : "已导入 txt：" + file.name,
+                          );
+                        } catch (error) {
+                          toast.error(error instanceof Error ? error.message : "读取 txt 失败");
+                        }
+                      }}
+                    />
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <FileUp className="h-3.5 w-3.5" />
+                      支持 UTF-8 / GBK 等常见编码
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium">原文内容</label>
+                  <textarea
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-y min-h-[160px]"
+                    placeholder="粘贴完整小说原文，或上方导入 .txt（最多 20 万字）…"
+                    rows={8}
+                    value={form.rawText}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, rawText: e.target.value }))}
+                  />
+                  {form.rawText.trim() ? (
+                    <p className="text-xs text-muted-foreground">当前约 {form.rawText.trim().length} 字</p>
+                  ) : null}
+                </div>
               </div>
             )}
+
           </>
         )}
 

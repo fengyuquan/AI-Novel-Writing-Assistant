@@ -12,6 +12,7 @@ import {
   prepareDramaCharacterSheet,
 } from "@/api/drama";
 import { getAPIKeySettings } from "@/api/settings";
+import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Badge } from "@/components/ui/badge";
@@ -168,6 +169,7 @@ function CharacterImagesBlock(props: {
   return (
     <div className="space-y-3 border-t pt-3">
       <ImageGenerationConfirmDialog {...imageFlow.dialogProps} />
+      <ImageCandidateSelectionDialog {...imageFlow.selectionDialogProps} />
       {/* 标题行 + Provider 选择器 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>

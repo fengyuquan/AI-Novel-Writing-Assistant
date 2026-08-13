@@ -9,6 +9,8 @@ import ChapterEditorAuditPanel, {
 } from "./ChapterEditorAuditPanel";
 import WritingAidsPanel from "./aids/WritingAidsPanel";
 import ChapterEditorStyleBenchmarkPanel from "./styleBenchmark/ChapterEditorStyleBenchmarkPanel";
+import ChapterEditorImageStoryPackPanel from "./ChapterEditorImageStoryPackPanel";
+import type { ChapterEditorPersistStatus } from "./chapterEditorUtils";
 import type { ChapterEditorSelectionRange } from "./chapterEditorTypes";
 
 interface ChapterEditorSidebarProps {
@@ -22,6 +24,9 @@ interface ChapterEditorSidebarProps {
   contentDraft: string;
   onContentChange: (next: string) => void;
   isDirty: boolean;
+  contentSaveStatus: ChapterEditorPersistStatus;
+  isSavingContent: boolean;
+  onAutoSaveContent: (content: string) => void;
   hasSelection: boolean;
   isGeneratingStuck: boolean;
   selectedDiagnosticId: string | null;
@@ -65,6 +70,9 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
     contentDraft,
     onContentChange,
     isDirty,
+    contentSaveStatus,
+    isSavingContent,
+    onAutoSaveContent,
     hasSelection,
     isGeneratingStuck,
     selectedDiagnosticId,
@@ -169,10 +177,20 @@ export default function ChapterEditorSidebar(props: ChapterEditorSidebarProps) {
                   chapterId={chapter.id}
                   contentDraft={contentDraft}
                   isDirty={isDirty}
+                  contentSaveStatus={contentSaveStatus}
+                  isSavingContent={isSavingContent}
                   onContentChange={onContentChange}
+                  onAutoSaveContent={onAutoSaveContent}
                   onLocateEvidence={onLocateAuditIssue}
                 />
               ) : null}
+              <ChapterEditorImageStoryPackPanel
+                novelId={novelId}
+                chapterId={chapter.id}
+                chapterOrder={chapter.order}
+                chapterTitle={chapter.title}
+                contentDraft={contentDraft}
+              />
               {onOpenVersionHistory ? (
                 <Button size="sm" variant="outline" onClick={onOpenVersionHistory} className="w-full">
                   版本入口

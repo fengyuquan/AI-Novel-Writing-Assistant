@@ -5,6 +5,7 @@ import {
   type DramaProjectDetail,
   type DramaSourceSupplementGuidance,
 } from "@/api/drama";
+import { getDramaLlmOptions } from "@/pages/drama/dramaLlmOptions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,6 +105,7 @@ function SourceSupplementPanel({ project }: { project: DramaProjectDetail }) {
   const [guidance, setGuidance] = useState<DramaSourceSupplementGuidance | null>(null);
   const mutation = useMutation({
     mutationFn: () => analyzeDramaSourceSupplement(project.id, {
+      ...getDramaLlmOptions(),
       userSupplement: userSupplement.trim() || undefined,
     }),
     onSuccess: (response) => {

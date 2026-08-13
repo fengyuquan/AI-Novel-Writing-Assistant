@@ -30,6 +30,7 @@ import { registerWritingPlatformRoutes } from "../writing-platform/http/writingP
 import {
   aiRevisionPreviewSchema,
   aiWritingDetectSchema,
+  chapterImageStoryPackSchema,
   styleBenchmarkCacheSaveSchema,
   styleBenchmarkCompareSchema,
   styleBenchmarkRewriteSchema,
@@ -118,6 +119,7 @@ export function registerNovelHttpRoutes(router: Router, services: NovelHttpServi
     rewritePreviewSchema,
     aiRevisionPreviewSchema,
     aiWritingDetectSchema,
+    chapterImageStoryPackSchema,
     styleBenchmarkRewriteSchema,
     styleBenchmarkCompareSchema,
     styleBenchmarkCacheSaveSchema,

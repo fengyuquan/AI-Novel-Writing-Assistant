@@ -15,6 +15,7 @@ import { AppError } from "../../middleware/errorHandler";
 import { resolveGeneratedImagesRoot } from "../../runtime/appPaths";
 import { filterImageGenerationReferences, runImageGeneration, safeJsonParse } from "../image/runtime";
 import { buildGenderLockPrompt, resolveComicStyleKeywords } from "./comicStylePrompt";
+import { applyComicTextToImageTaskLead, buildComicTextToImageTaskLead } from "./comicImageTaskPrompt";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ function buildAssetPrompt(params: {
   };
 
   const lines: string[] = [];
+  lines.push(buildComicTextToImageTaskLead("character_asset"));
   if (genderLock) lines.push(genderLock);
   lines.push(
     `professional ${typeLabels[assetType]}`,
@@ -152,7 +154,10 @@ function buildAssetPrompt(params: {
   }
 
   if (isRefAvailable) {
-    lines.push("use the provided character reference sheet to match style and color palette");
+    lines.push(
+      "match the character's written style and color palette from the appearance text below",
+      "do not depend on image-to-image editing; keep costume/asset design consistent by text constraints alone",
+    );
   }
 
   if (characterVisualAnchor) {
@@ -318,10 +323,11 @@ export class ComicCharacterAssetService {
   /** 预览即将发送给图像模型的全部素材（不消耗 token） */
   async prepareAssetImage(assetId: string, provider?: string): Promise<import("../image/runtime").ImageGenerationPreview> {
     const ctx = await this.buildAssetGenerationContext(assetId);
+    const hasRefs = ctx.referenceImages.length > 0;
     return {
       kind: ctx.adapter.kind,
       title: ctx.title,
-      prompt: ctx.prompt,
+      prompt: applyComicTextToImageTaskLead(ctx.prompt, "character_asset", hasRefs),
       referenceImages: ctx.referenceImages,
       provider: provider ?? "openai",
       size: ctx.size,
@@ -332,17 +338,27 @@ export class ComicCharacterAssetService {
     assetId: string,
     provider?: string,
     overrides?: import("../image/runtime").ImageGenerationOverrides,
-  ): Promise<void> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult> {
     const ctx = await this.buildAssetGenerationContext(assetId);
     const refs = filterImageGenerationReferences({
       refImagePaths: ctx.refImagePaths,
       referenceImages: ctx.referenceImages,
       excludedReferenceImageUrls: overrides?.excludedReferenceImageUrls,
     });
-    await runImageGeneration(ctx.adapter, {
+    const hasRefs =
+      (refs.referenceImages?.length ?? 0) > 0
+      || (refs.refImagePaths?.length ?? 0) > 0;
+    const prompt = applyComicTextToImageTaskLead(
+      overrides?.promptOverride ?? ctx.prompt,
+      "character_asset",
+      hasRefs,
+    );
+    return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
-      prompt: overrides?.promptOverride ?? ctx.prompt,
+      model: overrides?.modelOverride,
+      prompt,
       size: overrides?.sizeOverride ?? ctx.size,
+      count: overrides?.countOverride ?? 1,
       refImagePaths: refs.refImagePaths,
       referenceImages: refs.referenceImages && refs.referenceImages.length > 0 ? refs.referenceImages : undefined,
     });

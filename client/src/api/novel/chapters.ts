@@ -21,6 +21,41 @@ import type {
   ChapterStatus,
 } from "@ai-novel/shared/types/novel";
 import { apiClient } from "../client";
+import type { LLMProvider } from "@ai-novel/shared/types/llm";
+
+export interface ChapterImageStoryPackShot {
+  order: number;
+  action: string;
+  visualPrompt: string;
+  dialogue: string | null;
+  location: string | null;
+  shotSize: string | null;
+  durationSec: number | null;
+  characterRefs: string[];
+  captionedImagePrompt: string;
+}
+
+export interface ChapterImageStoryPack {
+  format: "ai-novel.chapter.image-story-pack.v1";
+  exportType: "chapter_captioned_image_pack";
+  mode: "captioned_image";
+  aspectRatio: "9:16";
+  summary: string;
+  chapter: {
+    novelId: string;
+    novelTitle: string;
+    chapterId: string;
+    order: number;
+    title: string;
+  };
+  characters: Array<{
+    name: string;
+    visualAnchor: string | null;
+  }>;
+  shots: ChapterImageStoryPackShot[];
+  warnings: string[];
+  usageHint: string;
+}
 
 export async function getNovelChapters(id: string) {
   const { data } = await apiClient.get<ApiResponse<Chapter[]>>(`/novels/${id}/chapters`);
@@ -140,6 +175,23 @@ export async function detectChapterAiWriting(
 ) {
   const { data } = await apiClient.post<ApiResponse<ChapterEditorAiWritingDetectResponse>>(
     `/novels/${novelId}/chapters/${chapterId}/editor/ai-writing-detect`,
+    payload,
+  );
+  return data;
+}
+
+export async function generateChapterImageStoryPack(
+  novelId: string,
+  chapterId: string,
+  payload: {
+    content?: string;
+    provider?: LLMProvider;
+    model?: string;
+    temperature?: number;
+  } = {},
+) {
+  const { data } = await apiClient.post<ApiResponse<ChapterImageStoryPack>>(
+    `/novels/${novelId}/chapters/${chapterId}/editor/image-story-pack`,
     payload,
   );
   return data;

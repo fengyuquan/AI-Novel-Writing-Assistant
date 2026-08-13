@@ -22,9 +22,14 @@ import { ragServices } from "../services/rag";
 import { providerBalanceService } from "../services/settings/ProviderBalanceService";
 import { secretStore } from "../services/settings/secretStore";
 import {
+  filterImageLikeModels,
+  getCachedImageModelCatalog,
+  getCachedImageModelCatalogMap,
   getDefaultImageModel,
   getImageModelOptions,
   getProviderImageModelMap,
+  mergeImageModelOptions,
+  saveCachedImageModelCatalog,
   saveProviderImageModel,
 } from "../services/settings/ProviderImageSettingsService";
 import { getRagEmbeddingModelOptions } from "../services/settings/RagEmbeddingModelService";
@@ -44,6 +49,7 @@ import {
   saveStyleEngineRuntimeSettings,
 } from "../services/settings/StyleEngineRuntimeSettingsService";
 import { registerCustomProviderRoutes } from "./settings/customProviderRoutes";
+import { registerImageSelectionRoutes } from "./settings/imageSelectionRoutes";
 import { registerLLMSelectionRoutes } from "./settings/llmSelectionRoutes";
 
 const router = Router();
@@ -197,6 +203,7 @@ function buildBuiltInProviderStatus(
     requestIntervalMs?: number | null;
   } | undefined,
   imageModel: string | undefined,
+  imageModelCatalog: string[] = [],
 ): BuiltInProviderStatus {
   const savedKey = normalizeOptionalText(item?.key);
   const envKey = getProviderEnvApiKey(provider);
@@ -221,7 +228,7 @@ function buildBuiltInProviderStatus(
     currentImageModel,
     currentBaseURL,
     models,
-    imageModels: Array.from(new Set([...getImageModelOptions(provider), currentImageModel ?? ""].filter(Boolean))),
+    imageModels: mergeImageModelOptions(provider, imageModelCatalog, currentImageModel),
     defaultModel: PROVIDERS[provider].defaultModel,
     defaultImageModel: getDefaultImageModel(provider) ?? null,
     defaultBaseURL: PROVIDERS[provider].baseURL,
@@ -231,7 +238,7 @@ function buildBuiltInProviderStatus(
     reasoningEnabled: item?.reasoningEnabled ?? true,
     concurrencyLimit: normalizeProviderLimit(item?.concurrencyLimit),
     requestIntervalMs: normalizeProviderLimit(item?.requestIntervalMs),
-    supportsImageGeneration: Boolean(currentImageModel),
+    supportsImageGeneration: Boolean(currentImageModel) || mergeImageModelOptions(provider, imageModelCatalog, currentImageModel).length > 0,
   };
 }
 
@@ -245,7 +252,7 @@ function buildCustomProviderStatus(item: {
   reasoningEnabled?: boolean | null;
   concurrencyLimit?: number | null;
   requestIntervalMs?: number | null;
-}, imageModel: string | undefined): CustomProviderStatus {
+}, imageModel: string | undefined, imageModelCatalog: string[] = []): CustomProviderStatus {
   const currentModel = normalizeOptionalText(item.model) ?? "";
   const currentBaseURL = normalizeOptionalText(item.baseURL) ?? "";
   const models = currentModel ? [currentModel] : [];
@@ -258,7 +265,7 @@ function buildCustomProviderStatus(item: {
     currentImageModel: imageModel ?? null,
     currentBaseURL,
     models,
-    imageModels: imageModel ? [imageModel] : [],
+    imageModels: mergeImageModelOptions(item.provider, imageModelCatalog, imageModel),
     defaultModel: currentModel,
     defaultImageModel: null,
     defaultBaseURL: currentBaseURL,
@@ -268,13 +275,14 @@ function buildCustomProviderStatus(item: {
     reasoningEnabled: item.reasoningEnabled ?? true,
     concurrencyLimit: normalizeProviderLimit(item.concurrencyLimit),
     requestIntervalMs: normalizeProviderLimit(item.requestIntervalMs),
-    supportsImageGeneration: Boolean(imageModel),
+    supportsImageGeneration: Boolean(imageModel) || mergeImageModelOptions(item.provider, imageModelCatalog, imageModel).length > 0,
   };
 }
 
 router.use(authMiddleware);
 registerCustomProviderRoutes(router);
 registerLLMSelectionRoutes(router);
+registerImageSelectionRoutes(router);
 
 router.get("/style-engine-runtime", async (_req, res, next) => {
   try {
@@ -432,13 +440,25 @@ router.get("/api-keys", async (_req, res, next) => {
       ...SUPPORTED_PROVIDERS,
       ...keys.map((item) => item.provider),
     ]));
-    const imageModelMap = await getProviderImageModelMap(allProviders);
+    const [imageModelMap, imageModelCatalogMap] = await Promise.all([
+      getProviderImageModelMap(allProviders),
+      getCachedImageModelCatalogMap(allProviders),
+    ]);
     const builtInProviders = SUPPORTED_PROVIDERS.map((provider) =>
-      buildBuiltInProviderStatus(provider, keyMap.get(provider), imageModelMap.get(provider)),
+      buildBuiltInProviderStatus(
+        provider,
+        keyMap.get(provider),
+        imageModelMap.get(provider),
+        imageModelCatalogMap.get(provider) ?? [],
+      ),
     );
     const customProviders = keys
       .filter((item) => !isBuiltInProvider(item.provider))
-      .map((item) => buildCustomProviderStatus(item, imageModelMap.get(item.provider)));
+      .map((item) => buildCustomProviderStatus(
+        item,
+        imageModelMap.get(item.provider),
+        imageModelCatalogMap.get(item.provider) ?? [],
+      ));
     const data = [...builtInProviders, ...customProviders];
     res.status(200).json({
       success: true,
@@ -532,10 +552,11 @@ router.put(
       const currentImageModel = body.imageModel !== undefined
         ? await saveProviderImageModel(provider, body.imageModel)
         : await getProviderImageModelMap([provider]).then((map) => map.get(provider) ?? null);
-      const imageModels = Array.from(new Set([
-        ...getImageModelOptions(provider),
-        currentImageModel ?? "",
-      ].filter(Boolean)));
+      const imageModels = mergeImageModelOptions(
+        provider,
+        await getCachedImageModelCatalog(provider),
+        currentImageModel,
+      );
 
       setProviderSecretCache(provider, data.isActive ? {
         displayName: data.displayName ?? undefined,
@@ -637,18 +658,29 @@ router.post(
       const currentModel = normalizeOptionalText(keyConfig?.model)
         ?? getProviderEnvModel(provider)
         ?? (isBuiltInProvider(provider) ? PROVIDERS[provider].defaultModel : "");
+      const currentImageModel = await getProviderImageModelMap([provider]).then((map) => map.get(provider) ?? null);
+      const refreshedImageModels = filterImageLikeModels(models);
+      const imageModels = mergeImageModelOptions(
+        provider,
+        await saveCachedImageModelCatalog(provider, refreshedImageModels),
+        currentImageModel,
+      );
       res.status(200).json({
         success: true,
         data: {
           provider,
           models,
           currentModel,
+          imageModels,
+          currentImageModel: currentImageModel ?? null,
         },
         message: "模型列表已刷新。",
       } satisfies ApiResponse<{
         provider: string;
         models: string[];
         currentModel: string;
+        imageModels: string[];
+        currentImageModel: string | null;
       }>);
     } catch (error) {
       if (error instanceof Error && /failed|empty/i.test(error.message)) {

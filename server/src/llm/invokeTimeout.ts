@@ -1,3 +1,31 @@
+export function mergeAbortSignals(
+  ...signals: Array<AbortSignal | undefined | null>
+): AbortSignal | undefined {
+  const active = signals.filter((signal): signal is AbortSignal => Boolean(signal));
+  if (active.length === 0) {
+    return undefined;
+  }
+  if (active.length === 1) {
+    return active[0];
+  }
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any(active);
+  }
+  const controller = new AbortController();
+  for (const signal of active) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+    signal.addEventListener("abort", () => {
+      if (!controller.signal.aborted) {
+        controller.abort(signal.reason);
+      }
+    }, { once: true });
+  }
+  return controller.signal;
+}
+
 function createTimeoutError(timeoutMs: number, label?: string): Error {
   const error = new Error(
     label?.trim()

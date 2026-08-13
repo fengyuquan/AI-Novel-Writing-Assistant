@@ -14,6 +14,7 @@ import ChapterEditorDirectorPanel from "../ChapterEditorDirectorPanel";
 import ChapterEditorSidebar from "../ChapterEditorSidebar";
 import type { ChapterEditorAuditResult } from "../ChapterEditorAuditPanel";
 import type { ChapterEditorMobilePane } from "../chapterEditorPageHelpers";
+import type { ChapterEditorPersistStatus } from "../chapterEditorUtils";
 import type {
   ChapterEditorNeighborChapter,
   ChapterEditorSelectionRange,
@@ -82,6 +83,8 @@ export interface ChapterEditorShellLayoutProps {
   isResolvingIssue: boolean;
   auditResult: ChapterEditorAuditResult | null;
   auditErrorMessage?: string | null;
+  contentSaveStatus: ChapterEditorPersistStatus;
+  onAutoSaveContent: (content: string) => void;
   aiWritingDetectResult: ChapterEditorAiWritingDetectResponse | null;
   aiWritingDetectErrorMessage?: string | null;
   isRunningAiWritingDetect: boolean;
@@ -189,6 +192,9 @@ export default function ChapterEditorShellLayout(props: ChapterEditorShellLayout
             contentDraft={props.contentDraft}
             onContentChange={props.onContentChange}
             isDirty={props.isDirty}
+            contentSaveStatus={props.contentSaveStatus}
+            isSavingContent={props.isSaving}
+            onAutoSaveContent={props.onAutoSaveContent}
             hasSelection={Boolean(props.selection?.text.trim())}
             isGeneratingStuck={props.isGenerating}
             selectedDiagnosticId={props.selectedDiagnosticId}

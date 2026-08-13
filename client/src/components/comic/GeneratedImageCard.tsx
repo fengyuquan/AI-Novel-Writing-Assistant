@@ -1,11 +1,12 @@
 import { useRef, type ReactNode } from "react";
 import { Image as ImageIcon, Loader2, Sparkles, Trash2, Upload } from "lucide-react";
 
-export type GeneratedImageCardStatus = "idle" | "generating" | "done" | "error";
+export type GeneratedImageCardStatus = "idle" | "generating" | "awaiting_selection" | "done" | "error";
 
 const STATUS_DOT: Record<GeneratedImageCardStatus, string> = {
   idle: "bg-muted-foreground/30",
   generating: "bg-sky-500 animate-pulse",
+  awaiting_selection: "bg-amber-500 animate-pulse",
   done: "bg-emerald-500",
   error: "bg-rose-500",
 };
@@ -13,6 +14,7 @@ const STATUS_DOT: Record<GeneratedImageCardStatus, string> = {
 const STATUS_TITLE: Record<GeneratedImageCardStatus, string> = {
   idle: "未生成",
   generating: "生成中",
+  awaiting_selection: "待选图",
   done: "已就绪",
   error: "生成失败",
 };
@@ -96,6 +98,7 @@ export function GeneratedImageCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isGenerating = busy || status === "generating";
+  const isAwaitingSelection = status === "awaiting_selection";
   const hasDoneImage = status === "done" && Boolean(imageUrl);
 
   const imageWrapperClass = aspectRatio ? ASPECT_STYLE[aspectRatio] : SIZE_STYLE[size];
@@ -136,6 +139,11 @@ export function GeneratedImageCard({
           <div className="flex flex-col items-center gap-1.5 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin" />
             <span className="text-[10px]">生成中</span>
+          </div>
+        ) : isAwaitingSelection ? (
+          <div className="flex flex-col items-center gap-1.5 text-amber-700 dark:text-amber-300">
+            <ImageIcon className="h-6 w-6 opacity-70" />
+            <span className="text-[10px]">有多张结果待选择</span>
           </div>
         ) : status === "error" ? (
           <div className="flex flex-col items-center gap-1 px-2 text-center text-rose-600 dark:text-rose-400" title={errorMessage}>

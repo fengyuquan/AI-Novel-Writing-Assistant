@@ -272,6 +272,11 @@ export default function NovelEdit() {
   } = useNovelEditWorkflow(id);
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
   const [autoOpenedFailedTaskId, setAutoOpenedFailedTaskId] = useState("");
+  /** 用户手动关掉任务抽屉后，禁止同一任务被失败自动打开 / URL 同步再次拉开。 */
+  const dismissedTaskDrawerTaskIdRef = useRef("");
+  /** 当前 URL `taskDrawer=1` 会话是否已经应用过一次打开，避免轮询抖动反复 setOpen(true)。 */
+  const appliedTaskPanelOpenRef = useRef(false);
+  const previousTaskPanelOpenRef = useRef(false);
   const [retryOverride, setRetryOverride] = useState<LLMSelectorValue>({
     provider: llm.provider,
     model: llm.model,
@@ -1398,22 +1403,52 @@ export default function NovelEdit() {
     });
   }, [activeAutoDirectorTask?.id, llm.model, llm.provider, llm.temperature]);
   useEffect(() => {
-    if (activeAutoDirectorTask?.status !== "failed") {
-      if (autoOpenedFailedTaskId) {
+    if (!activeAutoDirectorTask) {
+      return;
+    }
+    if (activeAutoDirectorTask.status !== "failed") {
+      if (autoOpenedFailedTaskId === activeAutoDirectorTask.id) {
         setAutoOpenedFailedTaskId("");
+      }
+      if (dismissedTaskDrawerTaskIdRef.current === activeAutoDirectorTask.id) {
+        dismissedTaskDrawerTaskIdRef.current = "";
       }
       return;
     }
     if (!activeAutoDirectorTask.id || activeAutoDirectorTask.id === autoOpenedFailedTaskId) {
       return;
     }
+    if (dismissedTaskDrawerTaskIdRef.current === activeAutoDirectorTask.id) {
+      return;
+    }
     setIsTaskDrawerOpen(true);
     setAutoOpenedFailedTaskId(activeAutoDirectorTask.id);
   }, [activeAutoDirectorTask?.id, activeAutoDirectorTask?.status, autoOpenedFailedTaskId]);
   useEffect(() => {
-    if (!taskPanelOpen || !displayAutoDirectorTask?.id) {
+    const taskPanelBecameOpen = taskPanelOpen && !previousTaskPanelOpenRef.current;
+    previousTaskPanelOpenRef.current = taskPanelOpen;
+
+    if (!taskPanelOpen) {
+      appliedTaskPanelOpenRef.current = false;
       return;
     }
+    if (!displayAutoDirectorTask?.id) {
+      return;
+    }
+    if (taskPanelBecameOpen) {
+      // 新的 taskDrawer=1 深链：允许再次打开。
+      dismissedTaskDrawerTaskIdRef.current = "";
+      appliedTaskPanelOpenRef.current = false;
+    }
+    if (appliedTaskPanelOpenRef.current) {
+      return;
+    }
+    if (dismissedTaskDrawerTaskIdRef.current === displayAutoDirectorTask.id) {
+      // 关闭过程中 URL 可能还短暂带着 taskDrawer=1；等参数清掉后再允许新的深链打开。
+      appliedTaskPanelOpenRef.current = true;
+      return;
+    }
+    appliedTaskPanelOpenRef.current = true;
     setIsTaskDrawerOpen(true);
   }, [displayAutoDirectorTask?.id, taskPanelOpen]);
   useEffect(() => {
@@ -2797,7 +2832,19 @@ export default function NovelEdit() {
         open: isTaskDrawerOpen,
         onOpenChange: (open) => {
           setIsTaskDrawerOpen(open);
-          if (!open && taskPanelOpen) {
+          if (open) {
+            dismissedTaskDrawerTaskIdRef.current = "";
+            return;
+          }
+          const closingTaskId = displayAutoDirectorTask?.id
+            || activeAutoDirectorTask?.id
+            || "";
+          if (closingTaskId) {
+            dismissedTaskDrawerTaskIdRef.current = closingTaskId;
+          }
+          // 关闭瞬间先锁住“已应用”，避免 clearTaskPanelOpen 完成前被 URL 同步再次拉开。
+          appliedTaskPanelOpenRef.current = true;
+          if (taskPanelOpen) {
             clearTaskPanelOpen();
           }
         },

@@ -30,6 +30,7 @@ import SettingsNavigationCards from "./components/SettingsNavigationCards";
 import SettingsReadinessCard, { buildSettingsReadinessItems } from "./components/SettingsReadinessCard";
 import SettingsSectionGroup from "./components/SettingsSectionGroup";
 import StyleEngineRuntimeSettingsCard from "./components/StyleEngineRuntimeSettingsCard";
+import DefaultImageProviderSettingsCard from "./components/DefaultImageProviderSettingsCard";
 import SettingsActionResult from "./SettingsActionResult";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
 import { writeProviderModelsCache } from "@/lib/providerModelsCache";
@@ -532,6 +533,7 @@ export default function SettingsPage() {
             });
           }}
         />
+        <DefaultImageProviderSettingsCard />
         <SettingsNavigationCards mode="routes" />
       </SettingsSectionGroup>
 

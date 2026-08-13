@@ -22,10 +22,11 @@ import {
 } from "../image/runtime";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { buildGenderLockPrompt, resolveComicStyleKeywords } from "./comicStylePrompt";
+import { applyComicTextToImageTaskLead, buildComicTextToImageTaskLead } from "./comicImageTaskPrompt";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type CharacterSheetStatus = "idle" | "generating" | "done" | "error";
+export type CharacterSheetStatus = "idle" | "generating" | "awaiting_selection" | "done" | "error";
 
 export interface CharacterSheetHistoryItem {
   version: number;
@@ -43,6 +44,7 @@ export interface CharacterSheetData {
   provider?: string;
   generatedAt?: string;
   error?: string;
+  origin?: "generated" | "uploaded";
   history?: CharacterSheetHistoryItem[];
   assets?: {
     expression?: CharacterExpressionData;
@@ -167,6 +169,7 @@ function buildSheetPrompt(character: {
   const genderLock = buildGenderLockPrompt(character.gender, character.name);
   // 关键顺序：性别锁 → 布局 → 强制外貌锚定 → 脸型 FINAL OVERRIDE（若有）→ 画风
   const lines: string[] = [];
+  lines.push(buildComicTextToImageTaskLead("character_sheet"));
   if (genderLock) lines.push(genderLock);
   lines.push(
     "professional character design reference sheet, single image",
@@ -254,6 +257,7 @@ function buildExpressionPrompt(character: {
   const faceOverride = extractFaceShapeOverride(character.visualAnchor);
   const genderLock = buildGenderLockPrompt(character.gender, character.name);
   const lines: string[] = [];
+  lines.push(buildComicTextToImageTaskLead("character_expression"));
   if (genderLock) lines.push(genderLock);
   lines.push(
     "professional manga character expression sheet, single 1536x1024 horizontal image",
@@ -285,6 +289,22 @@ async function removeOldAssetFiles(charId: string, basename: string, keepExt: st
     if (ext === keepExt) continue;
     await fs.unlink(path.join(dir, `${basename}.${ext}`)).catch(() => {});
   }
+}
+
+async function clearCharacterSheetFiles(charId: string): Promise<void> {
+  const dir = comicCharacterDir(charId);
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return;
+  }
+  await Promise.all(entries.map(async (name) => {
+    const fullPath = path.join(dir, name);
+    if (name === "derived" || name.startsWith("character-sheet") || name.startsWith("character-expression")) {
+      await fs.rm(fullPath, { recursive: true, force: true }).catch(() => {});
+    }
+  }));
 }
 
 async function resolveAssetFile(
@@ -362,6 +382,7 @@ export class ComicCharacterImageService {
       diskPath: (ext) => path.join(comicCharacterDir(charId), `character-sheet.${ext}`),
       publicUrl: () => sheetUrl(charId),
       cleanupOtherExts: (keepExt) => removeOldAssetFiles(charId, "character-sheet", keepExt),
+      buildExtraDoneState: () => ({ origin: "generated" as const }),
       versioning: {
         enabled: true,
         maxHistory: 5,
@@ -389,10 +410,11 @@ export class ComicCharacterImageService {
     options: GenerateCharacterSheetOptions = {},
   ): Promise<import("../image/runtime").ImageGenerationPreview> {
     const ctx = await this.buildCharacterSheetGenerationContext(charId, options);
+    const hasRefs = ctx.referenceImages.length > 0;
     return {
       kind: ctx.adapter.kind,
       title: ctx.title,
-      prompt: ctx.prompt,
+      prompt: applyComicTextToImageTaskLead(ctx.prompt, "character_sheet", hasRefs),
       referenceImages: ctx.referenceImages,
       provider,
       size: ctx.size,
@@ -404,17 +426,27 @@ export class ComicCharacterImageService {
     provider: LLMProvider = DEFAULT_PROVIDER,
     options: GenerateCharacterSheetOptions = {},
     overrides?: import("../image/runtime").ImageGenerationOverrides,
-  ): Promise<CharacterSheetData> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult<CharacterSheetData>> {
     const ctx = await this.buildCharacterSheetGenerationContext(charId, options);
     const refs = filterImageGenerationReferences({
       refImagePaths: ctx.refImagePaths,
       referenceImages: ctx.referenceImages,
       excludedReferenceImageUrls: overrides?.excludedReferenceImageUrls,
     });
+    const hasRefs =
+      (refs.referenceImages?.length ?? 0) > 0
+      || (refs.refImagePaths?.length ?? 0) > 0;
+    const prompt = applyComicTextToImageTaskLead(
+      overrides?.promptOverride ?? ctx.prompt,
+      "character_sheet",
+      hasRefs,
+    );
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
-      prompt: overrides?.promptOverride ?? ctx.prompt,
+      model: overrides?.modelOverride,
+      prompt,
       size: overrides?.sizeOverride ?? ctx.size,
+      count: overrides?.countOverride ?? 1,
       sceneType: "character",
       refImagePaths: refs.refImagePaths,
       referenceImages: refs.referenceImages && refs.referenceImages.length > 0 ? refs.referenceImages : undefined,
@@ -425,6 +457,98 @@ export class ComicCharacterImageService {
     const character = await prisma.comicCharacter.findUnique({ where: { id: charId }, select: { sheetData: true } });
     if (!character) throw new AppError(`未找到漫画角色：${charId}`, 404);
     return safeJsonParse<CharacterSheetData>(character.sheetData, { status: "idle" });
+  }
+
+  /**
+   * 上传或粘贴本地图片作为角色三视图主设计稿。
+   * 若已有完成态三视图，会先归档到 history，再写入新图。
+   */
+  async uploadCharacterSheet(
+    charId: string,
+    fileBuffer: Buffer,
+    mimeType: string,
+  ): Promise<CharacterSheetData> {
+    const character = await prisma.comicCharacter.findUnique({
+      where: { id: charId },
+      select: { id: true, sheetData: true },
+    });
+    if (!character) throw new AppError(`未找到漫画角色：${charId}`, 404);
+
+    const normalizedMime = mimeType.split(";")[0]?.trim().toLowerCase() || "image/png";
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(normalizedMime)) {
+      throw new AppError("仅支持 PNG / JPEG / WebP 图片。", 400);
+    }
+    if (fileBuffer.length === 0) {
+      throw new AppError("上传的图片为空。", 400);
+    }
+    if (fileBuffer.length > 20 * 1024 * 1024) {
+      throw new AppError("图片过大，请控制在 20MB 以内。", 400);
+    }
+
+    const current = safeJsonParse<CharacterSheetData>(character.sheetData, { status: "idle" });
+    if (current.status === "generating" || current.assets?.expression?.status === "generating") {
+      throw new AppError("三视图或表情稿正在生成中，请稍后再上传。", 409);
+    }
+
+    const archived = await this.archiveCurrent(charId, current);
+    const prevHistory = Array.isArray(current.history) ? current.history : [];
+    const nextHistory = (archived ? [...prevHistory, archived] : prevHistory).slice(-5);
+    const nextVersion = current.status === "done"
+      ? Math.max(1, readVersion(current) + 1)
+      : Math.max(1, readVersion(current) || 1);
+
+    const ext = normalizedMime === "image/jpeg" || normalizedMime === "image/jpg"
+      ? "jpg"
+      : normalizedMime === "image/webp"
+        ? "webp"
+        : "png";
+    const dir = comicCharacterDir(charId);
+    await fs.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, `character-sheet.${ext}`);
+    await fs.writeFile(filePath, fileBuffer);
+    await removeOldAssetFiles(charId, "character-sheet", ext);
+    // 主图变更后，派生的面部裁切失效
+    await fs.rm(path.join(dir, "derived"), { recursive: true, force: true }).catch(() => {});
+
+    const next: CharacterSheetData = {
+      status: "done",
+      version: nextVersion,
+      url: sheetUrl(charId),
+      origin: "uploaded",
+      generatedAt: new Date().toISOString(),
+      history: nextHistory,
+      ...(current.assets ? { assets: current.assets } : {}),
+    };
+    await prisma.comicCharacter.update({
+      where: { id: charId },
+      data: { sheetData: JSON.stringify(next) },
+    });
+    return next;
+  }
+
+  /**
+   * 清除当前角色三视图（及依赖它的表情稿）状态，回到生成前的 idle。
+   * 外貌锚点、角色资产库条目不受影响。
+   */
+  async clearCharacterSheet(charId: string): Promise<CharacterSheetData> {
+    const character = await prisma.comicCharacter.findUnique({
+      where: { id: charId },
+      select: { id: true, sheetData: true },
+    });
+    if (!character) throw new AppError(`未找到漫画角色：${charId}`, 404);
+
+    const current = safeJsonParse<CharacterSheetData>(character.sheetData, { status: "idle" });
+    if (current.status === "generating" || current.assets?.expression?.status === "generating") {
+      throw new AppError("三视图或表情稿正在生成中，请稍后再清除。", 409);
+    }
+
+    const cleared: CharacterSheetData = { status: "idle" };
+    await prisma.comicCharacter.update({
+      where: { id: charId },
+      data: { sheetData: JSON.stringify(cleared) },
+    });
+    await clearCharacterSheetFiles(charId);
+    return cleared;
   }
 
   async resolveSheetFile(charId: string): Promise<{ filePath: string; mimeType: string } | null> {
@@ -486,31 +610,98 @@ export class ComicCharacterImageService {
     provider: LLMProvider = DEFAULT_PROVIDER,
   ): Promise<import("../image/runtime").ImageGenerationPreview> {
     const ctx = await this.buildExpressionSheetGenerationContext(charId);
+    const hasRefs = ctx.referenceImages.length > 0;
     return {
       kind: ctx.adapter.kind,
       title: ctx.title,
-      prompt: ctx.prompt,
+      prompt: applyComicTextToImageTaskLead(ctx.prompt, "character_expression", hasRefs),
       referenceImages: ctx.referenceImages,
       provider,
       size: ctx.size,
     };
   }
 
+  async uploadExpressionSheet(
+    charId: string,
+    fileBuffer: Buffer,
+    mimeType: string,
+  ): Promise<CharacterExpressionData> {
+    const character = await prisma.comicCharacter.findUnique({
+      where: { id: charId },
+      select: { id: true, sheetData: true },
+    });
+    if (!character) throw new AppError(`未找到漫画角色：${charId}`, 404);
+
+    const normalizedMime = mimeType.split(";")[0]?.trim().toLowerCase() || "image/png";
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(normalizedMime)) {
+      throw new AppError("仅支持 PNG / JPEG / WebP 图片。", 400);
+    }
+    if (fileBuffer.length === 0) throw new AppError("上传的图片为空。", 400);
+    if (fileBuffer.length > 20 * 1024 * 1024) throw new AppError("图片过大，请控制在 20MB 以内。", 400);
+
+    const sheet = safeJsonParse<CharacterSheetData>(character.sheetData, { status: "idle" });
+    if (sheet.status === "generating" || sheet.assets?.expression?.status === "generating") {
+      throw new AppError("三视图或表情稿正在生成中，请稍后再上传。", 409);
+    }
+
+    const current = sheet.assets?.expression ?? { status: "idle" as const };
+    const nextVersion = current.status === "done"
+      ? Math.max(1, readExpressionVersion(current) + 1)
+      : Math.max(1, readExpressionVersion(current) || 1);
+    const ext = normalizedMime === "image/jpeg" || normalizedMime === "image/jpg"
+      ? "jpg"
+      : normalizedMime === "image/webp"
+        ? "webp"
+        : "png";
+    const dir = comicCharacterDir(charId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, `character-expression.${ext}`), fileBuffer);
+    await removeOldAssetFiles(charId, "character-expression", ext);
+    await fs.rm(path.join(dir, "derived"), { recursive: true, force: true }).catch(() => {});
+
+    const next: CharacterExpressionData = {
+      status: "done",
+      version: nextVersion,
+      url: expressionUrl(charId),
+      generatedAt: new Date().toISOString(),
+    };
+    const merged: CharacterSheetData = {
+      ...sheet,
+      status: sheet.status ?? "idle",
+      assets: { ...(sheet.assets ?? {}), expression: next },
+    };
+    await prisma.comicCharacter.update({
+      where: { id: charId },
+      data: { sheetData: JSON.stringify(merged) },
+    });
+    return next;
+  }
+
   async generateExpressionSheet(
     charId: string,
     provider: LLMProvider = DEFAULT_PROVIDER,
     overrides?: import("../image/runtime").ImageGenerationOverrides,
-  ): Promise<CharacterExpressionData> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult<CharacterExpressionData>> {
     const ctx = await this.buildExpressionSheetGenerationContext(charId);
     const refs = filterImageGenerationReferences({
       refImagePaths: ctx.refImagePaths,
       referenceImages: ctx.referenceImages,
       excludedReferenceImageUrls: overrides?.excludedReferenceImageUrls,
     });
+    const hasRefs =
+      (refs.referenceImages?.length ?? 0) > 0
+      || (refs.refImagePaths?.length ?? 0) > 0;
+    const prompt = applyComicTextToImageTaskLead(
+      overrides?.promptOverride ?? ctx.prompt,
+      "character_expression",
+      hasRefs,
+    );
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
-      prompt: overrides?.promptOverride ?? ctx.prompt,
+      model: overrides?.modelOverride,
+      prompt,
       size: overrides?.sizeOverride ?? ctx.size,
+      count: overrides?.countOverride ?? 1,
       sceneType: "character",
       refImagePaths: refs.refImagePaths,
       referenceImages: refs.referenceImages && refs.referenceImages.length > 0 ? refs.referenceImages : undefined,

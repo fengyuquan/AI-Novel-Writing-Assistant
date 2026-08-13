@@ -6,6 +6,7 @@ import { relaxGeneratedContentSchema } from "./generatedContentSchema";
 import { repairWithLlm } from "./structuredInvokeRepair";
 import {
   classifyStructuredOutputFailure,
+  humanizeLlmProviderErrorMessage,
   resolveStructuredOutputProfile,
   schemaAllowsTopLevelArray,
   selectStructuredOutputStrategy,
@@ -286,7 +287,7 @@ export function buildStructuredError(input: {
   fallbackUsed?: boolean;
 }): StructuredOutputError {
   return new StructuredOutputError({
-    message: input.message,
+    message: humanizeLlmProviderErrorMessage(input.message),
     category: input.category,
     diagnostics: buildDiagnostics({
       strategy: input.strategy,

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookMarked,
   Bot,
+  ClipboardPaste,
   Image as ImageIcon,
   Loader2,
   Plus,
@@ -19,6 +20,7 @@ import {
   characterAssetImageUrl,
   characterExpressionImageUrl,
   characterSheetImageUrl,
+  clearCharacterSheet,
   createCharacterAsset,
   deleteCharacterAsset,
   deleteComicFact,
@@ -28,12 +30,14 @@ import {
   prepareCharacterSheet,
   generateCharacterExpressionSheet,
   generateCharacterSheet,
+  uploadCharacterExpressionSheet,
   listCharacterAssets,
   listComicFacts,
   rewriteCharacterVisualAnchor,
   updateCharacterGender,
   updateCharacterVisualAnchor,
   uploadCharacterAssetImage,
+  uploadCharacterSheet,
   type CharacterAssetType,
   type AssetImageData,
   type ComicCharacterAsset,
@@ -44,13 +48,18 @@ import {
   type CharacterSheetData,
   type ComicCharacter,
 } from "@/api/comic";
+import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { GeneratedImageCard } from "@/components/comic/GeneratedImageCard";
+import { GeneratedImageCard, type GeneratedImageCardStatus } from "@/components/comic/GeneratedImageCard";
 import SelectControl from "@/components/common/SelectControl";
+import {
+  extractImageFileFromClipboardEvent,
+  readClipboardImageFile,
+} from "@/lib/clipboardImage";
 
 function parseSheetData(character: ComicCharacter): CharacterSheetData {
   try {
@@ -104,7 +113,9 @@ function CharacterStatusBadges({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Badge variant={sheetData.status === "done" ? "default" : "secondary"} className="text-[11px]">
-        三视图{sheetData.status === "done" ? ` v${sheetData.version ?? 1}` : "待生成"}
+        三视图{sheetData.status === "done"
+          ? ` v${sheetData.version ?? 1}${sheetData.origin === "uploaded" ? " · 上传" : ""}`
+          : "待生成"}
       </Badge>
       <Badge variant={expressionData.status === "done" ? "default" : "secondary"} className="text-[11px]">
         表情稿{expressionData.status === "done" ? ` v${expressionData.version ?? 1}` : "待生成"}
@@ -521,6 +532,7 @@ function CharacterDetail({
   provider: string;
 }) {
   const queryClient = useQueryClient();
+  const sheetFileInputRef = useRef<HTMLInputElement>(null);
   const [showSheetTuning, setShowSheetTuning] = useState(false);
   const [draftPrompt, setDraftPrompt] = useState("");
   const [useCurrentImageAsReference, setUseCurrentImageAsReference] = useState(true);
@@ -532,13 +544,82 @@ function CharacterDetail({
   const visualAnchorText = getVisualAnchorText(character);
   const recommendedSheetPrompt = buildRecommendedSheetPrompt(character);
   const hasSheet = sheetData.status === "done";
+  const canClearSheet = sheetData.status === "done" || sheetData.status === "error"
+    || expressionData.status === "done" || expressionData.status === "error";
   const sheetFlow = useImageGenerationFlow();
   const expressionFlow = useImageGenerationFlow();
+  const sheetImageSrc = hasSheet
+    ? `${characterSheetImageUrl(character.id)}?v=${sheetData.version ?? 1}&t=${encodeURIComponent(sheetData.generatedAt ?? "")}`
+    : "";
+
+  const clearSheetMut = useMutation({
+    mutationFn: () => clearCharacterSheet(character.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["comic", "project"] });
+      setShowSheetTuning(false);
+      toast.success(`${character.name} 已清除三视图，可重新生成`);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+
+  const uploadSheetMut = useMutation({
+    mutationFn: (file: File) => uploadCharacterSheet(character.id, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["comic", "project"] });
+      setShowSheetTuning(false);
+      toast.success(`${character.name} 三视图已更新`);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : String(error)),
+  });
+
+  const requestClearSheet = () => {
+    const ok = window.confirm(
+      `清除后，${character.name} 会回到尚未生成三视图的状态。\n\n`
+      + "当前三视图、历史版本和表情稿都会移除；外貌锚点与角色资产库不受影响。\n\n"
+      + "确认清除吗？",
+    );
+    if (!ok) return;
+    clearSheetMut.mutate();
+  };
+
+  const applySheetFile = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件（PNG / JPEG / WebP）");
+      return;
+    }
+    if (hasSheet) {
+      const ok = window.confirm("上传或粘贴会替换当前三视图，旧图会进入历史版本。继续吗？");
+      if (!ok) return;
+    }
+    uploadSheetMut.mutate(file);
+  };
+
+  const pasteSheetFromClipboard = async () => {
+    try {
+      const file = await readClipboardImageFile();
+      if (!file) {
+        toast.error("剪贴板里没有可用图片，请先复制图片后再粘贴");
+        return;
+      }
+      applySheetFile(file);
+    } catch {
+      toast.error("读取剪贴板失败，可改用 Ctrl+V 粘贴到预览区，或直接上传文件");
+    }
+  };
+
+  const handleSheetPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const file = extractImageFileFromClipboardEvent(event.nativeEvent);
+    if (!file) return;
+    event.preventDefault();
+    applySheetFile(file);
+  };
 
   const startSheetGeneration = (options?: GenerateCharacterSheetOptions) => {
     sheetFlow.start({
       prepare: () => prepareCharacterSheet(character.id, provider || undefined, options),
       generate: (overrides) => generateCharacterSheet(character.id, provider || undefined, options, overrides),
+      upload: (file) => uploadCharacterSheet(character.id, file),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["comic", "project"] });
         toast.success(`${character.name} 设计稿生成完成`);
@@ -551,6 +632,7 @@ function CharacterDetail({
     expressionFlow.start({
       prepare: () => prepareCharacterExpressionSheet(character.id, provider || undefined),
       generate: (overrides) => generateCharacterExpressionSheet(character.id, provider || undefined, overrides),
+      upload: (file) => uploadCharacterExpressionSheet(character.id, file),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["comic", "project"] });
         toast.success(`${character.name} 表情稿生成完成`);
@@ -560,6 +642,9 @@ function CharacterDetail({
 
   const isGenerating = sheetFlow.dialogProps.loading || sheetFlow.dialogProps.submitting || sheetData.status === "generating";
   const isExpressionGenerating = expressionFlow.dialogProps.loading || expressionFlow.dialogProps.submitting || expressionData.status === "generating";
+  const isClearingSheet = clearSheetMut.isPending;
+  const isUploadingSheet = uploadSheetMut.isPending;
+  const sheetBusy = isGenerating || isClearingSheet || isUploadingSheet;
 
   const openSheetTuning = () => {
     setDraftPrompt(sheetData.prompt?.trim() || recommendedSheetPrompt);
@@ -572,7 +657,9 @@ function CharacterDetail({
   return (
     <>
       <ImageGenerationConfirmDialog {...sheetFlow.dialogProps} />
+      <ImageCandidateSelectionDialog {...sheetFlow.selectionDialogProps} />
       <ImageGenerationConfirmDialog {...expressionFlow.dialogProps} />
+      <ImageCandidateSelectionDialog {...expressionFlow.selectionDialogProps} />
       <section className="min-w-0 overflow-hidden rounded-lg border bg-background">
       <div className="flex flex-col gap-3 border-b px-4 py-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
@@ -595,46 +682,107 @@ function CharacterDetail({
                 <p className="text-sm font-medium">三视图主设计稿</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">正面、侧面、背面和面部特写用于锁定角色外观。</p>
               </div>
-              {hasSheet && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={isGenerating || showSheetTuning}
-                  onClick={openSheetTuning}
-                >
-                  <Wand2 className="h-4 w-4" />
-                  调整三视图
-                </Button>
-              )}
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {hasSheet && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={sheetBusy || showSheetTuning}
+                    onClick={openSheetTuning}
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    调整三视图
+                  </Button>
+                )}
+                {canClearSheet && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isGenerating || isExpressionGenerating || isClearingSheet || isUploadingSheet}
+                    onClick={requestClearSheet}
+                  >
+                    {isClearingSheet ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    清除三视图
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="flex min-h-[360px] items-center justify-center bg-muted/30 p-4">
+          <div
+            className="flex min-h-[360px] flex-col items-center justify-center bg-muted/30 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            tabIndex={0}
+            onPaste={handleSheetPaste}
+            aria-label="三视图预览区，可粘贴图片"
+          >
             {hasSheet ? (
               <img
-                src={characterSheetImageUrl(character.id)}
+                src={sheetImageSrc}
                 alt={`${character.name} 设计稿`}
                 className="max-h-[520px] w-full rounded-md object-contain"
               />
-            ) : isGenerating ? (
+            ) : isGenerating || isUploadingSheet ? (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin" />
-                <span className="text-sm">三视图生成中</span>
+                <span className="text-sm">{isUploadingSheet ? "三视图上传中" : "三视图生成中"}</span>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3 text-muted-foreground">
                 <ImageIcon className="h-10 w-10 opacity-40" />
                 <div className="text-center">
                   <p className="text-sm font-medium text-foreground">还没有三视图</p>
-                  <p className="mt-1 text-xs">先生成主设计稿，再继续制作表情稿和格子图参考。</p>
+                  <p className="mt-1 text-xs">可 AI 生成、上传图片，或在此区域 Ctrl+V 粘贴。</p>
                 </div>
-                <Button type="button" size="sm" disabled={isGenerating} onClick={() => startSheetGeneration(undefined)}>
-                  <Sparkles className="h-4 w-4" />
-                  生成三视图
-                </Button>
               </div>
             )}
+          </div>
+
+          <div className="flex flex-wrap gap-2 border-t px-4 py-3">
+            <Button
+              type="button"
+              size="sm"
+              disabled={sheetBusy}
+              onClick={() => startSheetGeneration(undefined)}
+            >
+              <Sparkles className="h-4 w-4" />
+              {hasSheet ? "重新生成" : "生成三视图"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={sheetBusy}
+              onClick={() => sheetFileInputRef.current?.click()}
+            >
+              {isUploadingSheet ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              上传
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={sheetBusy}
+              onClick={() => void pasteSheetFromClipboard()}
+            >
+              <ClipboardPaste className="h-4 w-4" />
+              粘贴
+            </Button>
+            <input
+              ref={sheetFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(event) => {
+                applySheetFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
           </div>
 
           {sheetData.status === "error" && (
@@ -828,7 +976,7 @@ function CharacterDetail({
               )
             ) : (
               <div className="mt-3 rounded-md border border-dashed bg-muted/30 px-3 py-4 text-xs leading-relaxed text-muted-foreground">
-                先生成三视图，系统会保存本次提示词，并允许基于当前图继续微调。
+                先准备三视图（生成、上传或粘贴），系统会保存可用提示词，并允许基于当前图继续微调。
               </div>
             )}
           </div>
@@ -866,6 +1014,7 @@ const ASSET_TYPE_ACCENT: Record<CharacterAssetType, { chip: string; dot: string;
 const STATUS_DOT_STYLE: Record<string, string> = {
   idle: "bg-muted-foreground/30",
   generating: "bg-sky-500 animate-pulse",
+  awaiting_selection: "bg-amber-500 animate-pulse",
   done: "bg-emerald-500",
   error: "bg-rose-500",
 };
@@ -873,6 +1022,7 @@ const STATUS_DOT_STYLE: Record<string, string> = {
 const STATUS_DOT_TITLE: Record<string, string> = {
   idle: "未生成",
   generating: "生成中",
+  awaiting_selection: "待选图",
   done: "已就绪",
   error: "生成失败",
 };
@@ -900,6 +1050,7 @@ function AssetCard({
     flow.start({
       prepare: () => prepareCharacterAssetImage(asset.id, provider || undefined),
       generate: (overrides) => generateCharacterAssetImage(asset.id, provider || undefined, overrides),
+      upload: (file) => uploadCharacterAssetImage(asset.id, file),
       onSuccess: onUpdated,
     });
   };
@@ -917,11 +1068,12 @@ function AssetCard({
   });
 
   const accent = ASSET_TYPE_ACCENT[asset.assetType as CharacterAssetType] ?? ASSET_TYPE_ACCENT.other;
-  const status = (imageData.status ?? "idle") as "idle" | "generating" | "done" | "error";
+  const status = (imageData.status ?? "idle") as GeneratedImageCardStatus;
 
   return (
     <>
       <ImageGenerationConfirmDialog {...flow.dialogProps} />
+      <ImageCandidateSelectionDialog {...flow.selectionDialogProps} />
       <GeneratedImageCard
         status={status}
         imageUrl={status === "done" ? characterAssetImageUrl(asset.id) : undefined}

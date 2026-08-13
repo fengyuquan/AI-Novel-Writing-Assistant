@@ -8,7 +8,7 @@ import { resolveGeneratedImagesRoot } from "../../../runtime/appPaths";
 import { filterImageGenerationReferences, runImageGeneration, type ImageTargetAdapter } from "../../image/runtime";
 import { safeJsonParse } from "../utils/json";
 
-export type ShotKeyframeStatus = "idle" | "generating" | "done" | "error";
+export type ShotKeyframeStatus = "idle" | "generating" | "awaiting_selection" | "done" | "error";
 
 export interface ShotKeyframeHistoryItem {
   version: number;
@@ -299,7 +299,7 @@ export class DramaShotKeyframeService {
     provider: LLMProvider = DEFAULT_PROVIDER,
     useCharacterRefImages = false,
     overrides?: import("../../image/runtime").ImageGenerationOverrides,
-  ): Promise<ShotKeyframeData> {
+  ): Promise<import("../../image/runtime").RunImageGenerationResult<ShotKeyframeData>> {
     const ctx = await this.buildKeyframeGenerationContext(shotId, useCharacterRefImages);
     const refs = filterImageGenerationReferences({
       refImages: ctx.refImages,
@@ -308,8 +308,10 @@ export class DramaShotKeyframeService {
     });
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
+      count: overrides?.countOverride ?? 1,
       negativePrompt: overrides?.negativePromptOverride ?? ctx.negativePrompt,
       ...(refs.refImages && refs.refImages.length > 0 ? { refImages: refs.refImages } : {}),
       referenceImages: refs.referenceImages && refs.referenceImages.length > 0 ? refs.referenceImages : undefined,

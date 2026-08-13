@@ -126,7 +126,7 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
                 <div className="text-base font-semibold">更多入口</div>
-                <div className="text-xs text-muted-foreground">选择要继续处理的工作区。</div>
+                <div className="text-xs text-muted-foreground">短剧在最上方；也可继续打开其他工作区。</div>
               </div>
               <Button type="button" variant="ghost" size="icon" onClick={() => setMoreOpen(false)}>
                 <X className="h-4 w-4" />
@@ -155,20 +155,33 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
                     {group.title}
                   </div>
                   <div className="grid gap-2">
-                    {group.items.map((item) => (
-                      <Link
-                        key={item.key}
-                        to={item.to}
-                        className={cn(
-                          "flex items-center justify-between rounded-2xl border bg-muted/20 px-3 py-3 text-sm transition hover:border-primary/40 hover:bg-primary/5",
-                          location.pathname === item.to && "border-primary/50 bg-primary/10 font-semibold",
-                        )}
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <span>{item.label}</span>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </Link>
-                    ))}
+                    {group.items.map((item) => {
+                      const isDrama = item.key === "drama";
+                      return (
+                        <Link
+                          key={item.key}
+                          to={item.to}
+                          className={cn(
+                            "flex items-center justify-between rounded-2xl border px-3 py-3 text-sm transition hover:border-primary/40 hover:bg-primary/5",
+                            isDrama
+                              ? "border-primary/40 bg-primary/10 font-semibold"
+                              : "bg-muted/20",
+                            !isDrama && location.pathname === item.to && "border-primary/50 bg-primary/10 font-semibold",
+                          )}
+                          onClick={() => setMoreOpen(false)}
+                        >
+                          <span className="min-w-0">
+                            <span className="block">{item.label}</span>
+                            {isDrama ? (
+                              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                                一键生成切图提示词包
+                              </span>
+                            ) : null}
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </Link>
+                      );
+                    })}
                   </div>
                 </section>
               ))}

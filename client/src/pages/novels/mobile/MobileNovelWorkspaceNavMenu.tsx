@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   BookOpenText,
   ChevronRight,
+  Clapperboard,
   Home,
   ListTodo,
   Menu,
@@ -58,6 +59,13 @@ export default function MobileNovelWorkspaceNavMenu({
       icon: BookOpenText,
     },
     {
+      key: "drama",
+      label: "短剧工作台",
+      description: "生成切图提示词包，去做图片切换剧",
+      to: "/drama",
+      icon: Clapperboard,
+    },
+    {
       key: "workspace",
       label: "当前小说工作区",
       description: novelTitle,
@@ -105,7 +113,7 @@ export default function MobileNovelWorkspaceNavMenu({
         >
           <SheetHeader className="shrink-0 border-b px-4 py-4 pr-12">
             <SheetTitle>工作区导航</SheetTitle>
-            <SheetDescription>回到首页或其他入口，继续推进当前小说。</SheetDescription>
+            <SheetDescription>回到首页、短剧工作台或其他入口。</SheetDescription>
           </SheetHeader>
           <SheetBody className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
             {items.map((item) => {

@@ -442,6 +442,10 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/novel/chapterEditor/aiWritingDetect.prompts").chapterEditorAiWritingDetectPrompt as UnknownPromptAsset,
   },
   {
+    key: "novel.chapter_editor.image_story_pack@v2",
+    load: () => require("../prompts/novel/chapterEditor/imageStoryPack.prompts").chapterImageStoryPackPrompt as UnknownPromptAsset,
+  },
+  {
     key: "novel.chapter_editor.style_benchmark_essence@v1",
     load: () => require("../prompts/novel/chapterEditor/styleBenchmarkEssence.prompts").chapterEditorStyleBenchmarkEssencePrompt as UnknownPromptAsset,
   },

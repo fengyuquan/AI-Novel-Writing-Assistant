@@ -26,6 +26,7 @@ import { outlineCreateBootstrapService } from "../volume/OutlineCreateBootstrapS
 import { NovelChapterEditorService } from "../chapterEditor/NovelChapterEditorService";
 import { ChapterEditorStyleBenchmarkService } from "../chapterEditor/ChapterEditorStyleBenchmarkService";
 import { ChapterEditorWorkspaceService } from "../chapterEditor/ChapterEditorWorkspaceService";
+import { ChapterImageStoryPackService } from "../chapterEditor/ChapterImageStoryPackService";
 import type { NovelApplicationServices } from "./NovelApplicationContracts";
 import type { NovelSnapshotListItem } from "@ai-novel/shared/types/novel";
 
@@ -61,6 +62,7 @@ export class DefaultNovelApplicationServices {
   private readonly chapterEditorWorkspaceService = new ChapterEditorWorkspaceService();
   private readonly chapterEditorService = new NovelChapterEditorService();
   private readonly chapterEditorStyleBenchmarkService = new ChapterEditorStyleBenchmarkService();
+  private readonly chapterImageStoryPackService = new ChapterImageStoryPackService();
   private readonly chapterRuntimeCoordinator = new ChapterRuntimeCoordinator();
   private readonly qualityRepairCoordinator = new ChapterRuntimeCoordinator({
     reviewChapterAfterRepair: (novelId, chapterId, options) => this.core.reviewChapter(novelId, chapterId, options),
@@ -479,6 +481,12 @@ export class DefaultNovelApplicationServices {
 
   detectChapterAiWriting(...args: Parameters<NovelChapterEditorService["detectAiWriting"]>) {
     return this.chapterEditorService.detectAiWriting(...args);
+  }
+
+  generateChapterImageStoryPack(
+    ...args: Parameters<ChapterImageStoryPackService["generate"]>
+  ) {
+    return this.chapterImageStoryPackService.generate(...args);
   }
 
   listChapterStyleBenchmarkSources(

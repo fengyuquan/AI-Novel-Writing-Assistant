@@ -96,7 +96,7 @@ export interface PanelReferenceImageMeta {
 }
 
 export interface PanelImageData {
-  status: "idle" | "generating" | "done" | "error";
+  status: "idle" | "generating" | "awaiting_selection" | "done" | "error";
   version?: number;
   url?: string;
   prompt?: string;
@@ -207,20 +207,21 @@ export async function updateComicPreset(projectId: string, payload: UpdateComicP
 // ─── Characters ───────────────────────────────────────────────────────────────
 
 export interface CharacterSheetData {
-  status: "idle" | "generating" | "done" | "error";
+  status: "idle" | "generating" | "awaiting_selection" | "done" | "error";
   version?: number;
   url?: string;
   prompt?: string;
   provider?: string;
   generatedAt?: string;
   error?: string;
+  origin?: "generated" | "uploaded";
   assets?: {
     expression?: CharacterExpressionData;
   };
 }
 
 export interface CharacterExpressionData {
-  status: "idle" | "generating" | "done" | "error";
+  status: "idle" | "generating" | "awaiting_selection" | "done" | "error";
   version?: number;
   url?: string;
   prompt?: string;
@@ -276,6 +277,32 @@ export async function prepareCharacterSheet(
 
 export async function getCharacterSheetData(charId: string): Promise<CharacterSheetData> {
   const res = await apiClient.get<ApiResponse<CharacterSheetData>>(`/comic/characters/${charId}/sheet`);
+  return res.data.data!;
+}
+
+export async function clearCharacterSheet(charId: string): Promise<CharacterSheetData> {
+  const res = await apiClient.delete<ApiResponse<CharacterSheetData>>(`/comic/characters/${charId}/sheet`);
+  return res.data.data!;
+}
+
+export async function uploadCharacterSheet(charId: string, file: File): Promise<CharacterSheetData> {
+  const res = await apiClient.post<ApiResponse<CharacterSheetData>>(
+    `/comic/characters/${charId}/sheet/upload`,
+    file,
+    { headers: { "Content-Type": file.type || "image/png" } },
+  );
+  return res.data.data!;
+}
+
+export async function uploadCharacterExpressionSheet(
+  charId: string,
+  file: File,
+): Promise<CharacterExpressionData> {
+  const res = await apiClient.post<ApiResponse<CharacterExpressionData>>(
+    `/comic/characters/${charId}/expressions/upload`,
+    file,
+    { headers: { "Content-Type": file.type || "image/png" } },
+  );
   return res.data.data!;
 }
 
@@ -388,8 +415,19 @@ export async function generatePanelImage(
   return res.data.data!;
 }
 
-export function panelImageUrl(panelId: string): string {
-  return `/api/comic/panel-images/${panelId}/panel`;
+export async function uploadPanelImage(panelId: string, file: File): Promise<PanelImageData> {
+  const res = await apiClient.post<ApiResponse<PanelImageData>>(
+    `/comic/panels/${panelId}/image/upload`,
+    file,
+    { headers: { "Content-Type": file.type || "image/png" } },
+  );
+  return res.data.data!;
+}
+
+export function panelImageUrl(panelId: string, cacheKey?: string | number | null): string {
+  const base = `/api/comic/panel-images/${panelId}/panel`;
+  if (cacheKey == null || cacheKey === "") return base;
+  return `${base}?v=${encodeURIComponent(String(cacheKey))}`;
 }
 
 export function panelLetteredImageUrl(panelId: string): string {
@@ -583,16 +621,21 @@ export interface ImageGenerationPreview {
   negativePrompt?: string;
   referenceImages: Array<{ kind: string; label: string; url: string; assetId?: string }>;
   provider: string;
+  model?: string;
   size: string;
   availableProviders?: Array<{ value: string; label: string }>;
+  availableModels?: string[];
   availableSizes?: string[];
 }
 
 export interface ImageGenerationOverrides {
   promptOverride?: string;
   providerOverride?: string;
+  modelOverride?: string;
   sizeOverride?: string;
   negativePromptOverride?: string;
+  /** 一次请求生成几张；上游若返回多张会再弹窗选择 */
+  countOverride?: number;
   excludedReferenceImageUrls?: string[];
 }
 

@@ -22,7 +22,7 @@ import {
   clearStyleBenchmarkSession,
   loadStyleBenchmarkPrefs,
   loadStyleBenchmarkSession,
-  saveStyleBenchmarkPrefs,
+  patchStyleBenchmarkPrefs,
   upsertBenchmarkList,
   type StyleBenchmarkLayoutColumns,
 } from "./styleBenchmarkStorage";
@@ -123,8 +123,42 @@ export function useChapterEditorStyleBenchmarkActions(params: {
   const [latestGeneratedSessionId, setLatestGeneratedSessionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cacheReady, setCacheReady] = useState(false);
+  const [cacheSaveStatus, setCacheSaveStatus] = useState<"idle" | "pending" | "saving" | "saved" | "error">("idle");
   const saveTimerRef = useRef<number | null>(null);
   const skipNextSaveRef = useRef(true);
+  const pendingSessionRef = useRef<ChapterEditorStyleBenchmarkCacheSession | null>(null);
+  const cacheSaveInFlightRef = useRef(false);
+  const flushPendingCacheSaveRef = useRef<() => Promise<void>>(async () => {});
+
+  const flushPendingCacheSave = async () => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const session = pendingSessionRef.current;
+    if (!session || !novelId || !chapterId || cacheSaveInFlightRef.current) {
+      return;
+    }
+    cacheSaveInFlightRef.current = true;
+    setCacheSaveStatus("saving");
+    try {
+      await saveChapterStyleBenchmarkCache(novelId, chapterId, session);
+      // 仅在仍是同一份待保存会话时清掉，避免覆盖更新中的草稿。
+      if (pendingSessionRef.current === session) {
+        pendingSessionRef.current = null;
+        setCacheSaveStatus("saved");
+      }
+    } catch {
+      setCacheSaveStatus("error");
+    } finally {
+      cacheSaveInFlightRef.current = false;
+      // 保存过程中又有新编辑时，立刻再冲刷一次。
+      if (pendingSessionRef.current && pendingSessionRef.current !== session) {
+        void flushPendingCacheSaveRef.current();
+      }
+    }
+  };
+  flushPendingCacheSaveRef.current = flushPendingCacheSave;
 
   useEffect(() => {
     let cancelled = false;
@@ -250,6 +284,8 @@ export function useChapterEditorStyleBenchmarkActions(params: {
       return;
     }
     if (!selectedSourceKey && benchmarks.length === 0) {
+      pendingSessionRef.current = null;
+      setCacheSaveStatus("idle");
       return;
     }
 
@@ -266,14 +302,14 @@ export function useChapterEditorStyleBenchmarkActions(params: {
       layoutColumns,
       updatedAt: new Date().toISOString(),
     };
+    pendingSessionRef.current = session;
+    setCacheSaveStatus("pending");
 
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
     }
     saveTimerRef.current = window.setTimeout(() => {
-      void saveChapterStyleBenchmarkCache(novelId, chapterId, session).catch(() => {
-        // Keep UI usable; next change will retry.
-      });
+      void flushPendingCacheSaveRef.current();
     }, 600);
 
     return () => {
@@ -481,7 +517,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
 
   const setLayoutColumns = (next: StyleBenchmarkLayoutColumns) => {
     setLayoutColumnsState(next);
-    saveStyleBenchmarkPrefs({ layoutColumns: next });
+    patchStyleBenchmarkPrefs({ layoutColumns: next });
     setActiveSessionIds((current) => ensureActiveSessionIds(benchmarks, current, next, focusedSessionId));
   };
 
@@ -615,5 +651,7 @@ export function useChapterEditorStyleBenchmarkActions(params: {
     runRewrite: (focusGaps?: string[]) => rewriteMutation.mutate(focusGaps),
     runCompare: (sessionId?: string) => compareMutation.mutate(sessionId),
     clearCachedResults,
+    cacheSaveStatus,
+    flushPendingCacheSave,
   };
 }

@@ -37,3 +37,28 @@ test("LLM 实况会话按任务发布片段并保留最新快照", () => {
   assert.equal(snapshot.totalChars, 6);
   assert.equal(snapshot.phase, "completed");
 });
+
+test("LLM 实况会话支持用户中断并 abort signal", () => {
+  const broker = new LlmLiveBroker();
+  const events = [];
+  const stop = broker.subscribe({}, (event) => events.push(event));
+
+  const session = broker.begin({
+    label: "大纲生成",
+    mode: "structured",
+    taskId: "task-cancel",
+  });
+  session.phase("streaming", "模型正在返回内容");
+  assert.equal(session.signal?.aborted, false);
+
+  const cancelled = broker.requestCancel(session.interactionId);
+  assert.equal(cancelled, true);
+  assert.equal(session.signal?.aborted, true);
+  assert.equal(session.isCancelled(), true);
+  assert.equal(broker.requestCancel(session.interactionId), false);
+
+  stop();
+  assert.ok(events.some((event) => event.type === "session_cancelled"));
+  const [snapshot] = broker.getSnapshots({ taskId: "task-cancel" });
+  assert.equal(snapshot.phase, "cancelled");
+});

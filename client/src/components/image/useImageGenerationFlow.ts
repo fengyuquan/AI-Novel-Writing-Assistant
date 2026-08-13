@@ -3,24 +3,38 @@
  *
  * 使用方式：
  *   const flow = useImageGenerationFlow();
- *   <button onClick={() => flow.start({
- *     prepare: () => prepareCharacterAssetImage(asset.id, provider),
- *     generate: (overrides) => generateCharacterAssetImage(asset.id, provider, overrides),
- *     onSuccess: () => refresh(),
- *   })}>AI 生图</button>
+ *   flow.start({ ... });
+ *   flow.reopenSelection({ selectionId, candidates, selectedIndex, onSuccess });
  *   <ImageGenerationConfirmDialog {...flow.dialogProps} />
- *
- * 流程：start → prepare 拿预览 → 弹窗 → 用户 confirm/取消 → 取消时 generate
+ *   <ImageCandidateSelectionDialog {...flow.selectionDialogProps} />
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { toast } from "@/components/ui/toast";
 import type { ImageGenerationOverrides, ImageGenerationPreview } from "@/api/comic";
+import {
+  applyImageSelection,
+  isImageSelectionPending,
+  type ImageCandidateItem,
+} from "@/api/imageRuntime";
+import {
+  isManualImageInterventionEnabled,
+  subscribeManualImageIntervention,
+} from "@/lib/manualImageIntervention";
 
-interface StartOptions<TResult = unknown> {
+interface StartOptions {
   prepare: () => Promise<ImageGenerationPreview>;
-  generate: (overrides: ImageGenerationOverrides) => Promise<TResult>;
-  onSuccess?: (result: TResult) => void;
+  generate: (overrides: ImageGenerationOverrides) => Promise<unknown>;
+  upload?: (file: File) => Promise<unknown>;
+  onSuccess?: (result?: unknown) => void;
+  onError?: (err: unknown) => void;
+}
+
+interface ReopenSelectionOptions {
+  selectionId: string;
+  candidates: ImageCandidateItem[];
+  selectedIndex?: number | null;
+  onSuccess?: (result?: unknown) => void;
   onError?: (err: unknown) => void;
 }
 
@@ -29,33 +43,120 @@ export function useImageGenerationFlow() {
   const [preview, setPreview] = useState<ImageGenerationPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // 当前活跃的 generate 闭包（弹窗 confirm 时调用）
+  const [manualMode, setManualMode] = useState(() => isManualImageInterventionEnabled());
   const [activeGenerate, setActiveGenerate] = useState<((o: ImageGenerationOverrides) => Promise<void>) | null>(null);
+  const [activeUpload, setActiveUpload] = useState<((file: File) => Promise<void>) | null>(null);
 
-  const start = async <TResult>({ prepare, generate, onSuccess, onError }: StartOptions<TResult>) => {
+  const [selectionOpen, setSelectionOpen] = useState(false);
+  const [selectionId, setSelectionId] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<ImageCandidateItem[]>([]);
+  const [initialSelectedIndex, setInitialSelectedIndex] = useState<number | null>(null);
+  const [selectionMode, setSelectionMode] = useState<"select" | "reselect">("select");
+  const [selectionSubmitting, setSelectionSubmitting] = useState(false);
+  const [pendingOnSuccess, setPendingOnSuccess] = useState<((result?: unknown) => void) | null>(null);
+  const [pendingOnError, setPendingOnError] = useState<((err: unknown) => void) | null>(null);
+
+  useEffect(() => subscribeManualImageIntervention(setManualMode), []);
+
+  const resetConfirm = () => {
+    setOpen(false);
+    setPreview(null);
+    setActiveGenerate(null);
+    setActiveUpload(null);
+    setSubmitting(false);
+    setLoading(false);
+  };
+
+  const resetSelection = () => {
+    setSelectionOpen(false);
+    setSelectionId(null);
+    setCandidates([]);
+    setInitialSelectedIndex(null);
+    setSelectionMode("select");
+    setSelectionSubmitting(false);
+    setPendingOnSuccess(null);
+    setPendingOnError(null);
+  };
+
+  const reset = () => {
+    resetConfirm();
+    resetSelection();
+  };
+
+  const openSelection = (
+    payload: {
+      selectionId: string;
+      candidates: ImageCandidateItem[];
+      selectedIndex?: number | null;
+      mode?: "select" | "reselect";
+    },
+    onSuccess?: (result?: unknown) => void,
+    onError?: (err: unknown) => void,
+  ) => {
+    resetConfirm();
+    setSelectionId(payload.selectionId);
+    setCandidates(payload.candidates);
+    setInitialSelectedIndex(
+      typeof payload.selectedIndex === "number" ? payload.selectedIndex : null,
+    );
+    setSelectionMode(payload.mode ?? "select");
+    setPendingOnSuccess(() => onSuccess ?? null);
+    setPendingOnError(() => onError ?? null);
+    setSelectionOpen(true);
+  };
+
+  const start = async ({ prepare, generate, upload, onSuccess, onError }: StartOptions) => {
     setOpen(true);
     setLoading(true);
     setPreview(null);
+    setActiveGenerate(null);
+    setActiveUpload(null);
     try {
       const p = await prepare();
       setPreview(p);
       setLoading(false);
-      // 闭包绑定本次 generate
+
       setActiveGenerate(() => async (overrides: ImageGenerationOverrides) => {
         setSubmitting(true);
         try {
           const result = await generate(overrides);
-          setOpen(false);
-          setPreview(null);
-          setActiveGenerate(null);
+          if (isImageSelectionPending(result)) {
+            openSelection(
+              {
+                selectionId: result.selectionId,
+                candidates: result.candidates,
+                selectedIndex: result.selectedIndex,
+                mode: "select",
+              },
+              onSuccess,
+              onError,
+            );
+            return;
+          }
+          reset();
           onSuccess?.(result);
         } catch (err) {
           toast.error(err instanceof Error ? err.message : String(err));
           onError?.(err);
-        } finally {
           setSubmitting(false);
         }
       });
+
+      if (upload) {
+        setActiveUpload(() => async (file: File) => {
+          setSubmitting(true);
+          try {
+            const result = await upload(file);
+            reset();
+            onSuccess?.(result);
+            toast.success("已用本地图片完成生图");
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : String(err));
+            onError?.(err);
+            setSubmitting(false);
+          }
+        });
+      }
     } catch (err) {
       setLoading(false);
       setOpen(false);
@@ -64,22 +165,93 @@ export function useImageGenerationFlow() {
     }
   };
 
+  const reopenSelection = ({
+    selectionId: id,
+    candidates: items,
+    selectedIndex,
+    onSuccess,
+    onError,
+  }: ReopenSelectionOptions) => {
+    if (!id || !items.length) {
+      toast.error("没有可改选的候选图，请重新生成");
+      return;
+    }
+    openSelection(
+      {
+        selectionId: id,
+        candidates: items,
+        selectedIndex,
+        mode: "reselect",
+      },
+      onSuccess,
+      onError,
+    );
+  };
+
   const cancel = () => {
-    setOpen(false);
-    setPreview(null);
-    setActiveGenerate(null);
+    reset();
+  };
+
+  const cancelSelection = () => {
+    const wasReselect = selectionMode === "reselect";
+    resetSelection();
+    if (!wasReselect) {
+      toast.message("已关闭选图。候选图会保留一段时间，可稍后再改选。");
+    }
+  };
+
+  const confirmSelection = async (index: number) => {
+    if (!selectionId) return;
+    const mode = selectionMode;
+    setSelectionSubmitting(true);
+    try {
+      const result = await applyImageSelection(selectionId, index);
+      const success = pendingOnSuccess;
+      reset();
+      success?.(result);
+      toast.success(mode === "reselect" ? "已改用选中的图片" : "已保存选中的图片");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+      pendingOnError?.(err);
+      setSelectionSubmitting(false);
+    }
   };
 
   return {
     start,
+    reopenSelection,
     dialogProps: {
       open,
       preview,
       loading,
       submitting,
+      manualMode,
+      supportsManualUpload: Boolean(activeUpload),
       onCancel: cancel,
       onConfirm: (overrides: ImageGenerationOverrides) => {
-        activeGenerate?.(overrides);
+        if (manualMode) {
+          toast.error("当前已开启人工干预，请粘贴或上传图片，而不是调用图像模型");
+          return;
+        }
+        void activeGenerate?.(overrides);
+      },
+      onManualUpload: (file: File) => {
+        if (!activeUpload) {
+          toast.error("当前入口暂不支持人工上传，请先关闭人工干预或改用该入口旁的上传按钮");
+          return;
+        }
+        void activeUpload(file);
+      },
+    },
+    selectionDialogProps: {
+      open: selectionOpen,
+      candidates,
+      initialSelectedIndex,
+      mode: selectionMode,
+      submitting: selectionSubmitting,
+      onCancel: cancelSelection,
+      onSelect: (index: number) => {
+        void confirmSelection(index);
       },
     },
   };

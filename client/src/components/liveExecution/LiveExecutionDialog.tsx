@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ChevronDown, ChevronRight, Eraser, GripHorizontal, Maximize2, Minimize2, Radio, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Eraser, GripHorizontal, Maximize2, Minimize2, Radio, Square, X } from "lucide-react";
 import type { LlmLiveSessionSnapshot } from "@ai-novel/shared/types/llmLive";
+import { cancelActiveLlmLiveSessions, cancelLlmLiveSession } from "@/api/llmLive";
 import { useLlmLiveFeed } from "@/hooks/useLlmLiveFeed";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 
 function phaseLabel(phase: string): string {
@@ -85,6 +87,8 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
   const [followingLatest, setFollowingLatest] = useState(true);
   const [collapsedSessionIds, setCollapsedSessionIds] = useState<Set<string>>(() => new Set());
   const [triggerPosition, setTriggerPosition] = useState<TriggerPosition | null>(null);
+  const [cancellingIds, setCancellingIds] = useState<Set<string>>(() => new Set());
+  const [cancellingAll, setCancellingAll] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const latestSessionRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{ pointerX: number; pointerY: number; offsetX: number; offsetY: number } | null>(null);
@@ -100,6 +104,7 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
   const followLatestRef = useRef(true);
   const latestSessionIdRef = useRef<string | null>(null);
   const autoOpenedSessionIdsRef = useRef(new Set<string>());
+  const userDismissedWhileActiveRef = useRef(false);
   const { clearSessions, connected, sessions } = useLlmLiveFeed({
     enabled: true,
     taskId: props.taskId,
@@ -136,6 +141,15 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
 
   useEffect(() => {
     if (!props.autoOpenOnActivity) {
+      return;
+    }
+    const hasActiveSession = orderedSessions.some((session) => isActive(session.phase));
+    if (!hasActiveSession) {
+      // 本轮活动结束后允许下一轮再次自动打开一次。
+      userDismissedWhileActiveRef.current = false;
+      return;
+    }
+    if (userDismissedWhileActiveRef.current) {
       return;
     }
     const unseenActiveSession = orderedSessions.find((session) => (
@@ -219,6 +233,13 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
     if (nextOpen) {
       followLatestRef.current = true;
       setFollowingLatest(true);
+      userDismissedWhileActiveRef.current = false;
+    } else if (props.autoOpenOnActivity) {
+      const hasActiveSession = sessions.some((session) => isActive(session.phase));
+      if (hasActiveSession) {
+        // 用户在仍有活动生成时手动关闭：本轮不再自动弹窗。
+        userDismissedWhileActiveRef.current = true;
+      }
     }
     setOpen(nextOpen);
   };
@@ -292,6 +313,45 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
       return;
     }
     handleOpenChange(true);
+  };
+
+  const markCancelling = (interactionId: string, pending: boolean) => {
+    setCancellingIds((current) => {
+      const next = new Set(current);
+      if (pending) next.add(interactionId);
+      else next.delete(interactionId);
+      return next;
+    });
+  };
+
+  const handleCancelSession = async (interactionId: string) => {
+    markCancelling(interactionId, true);
+    try {
+      await cancelLlmLiveSession(interactionId);
+      toast.success("已发送中断请求");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "中断失败");
+    } finally {
+      markCancelling(interactionId, false);
+    }
+  };
+
+  const handleCancelActive = async () => {
+    setCancellingAll(true);
+    try {
+      const result = await cancelActiveLlmLiveSessions({
+        taskId: props.taskId ?? undefined,
+      });
+      if (result.cancelledCount === 0) {
+        toast.error("当前没有可中断的模型请求");
+      } else {
+        toast.success(`已中断 ${result.cancelledCount} 次模型请求`);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "中断失败");
+    } finally {
+      setCancellingAll(false);
+    }
   };
 
   return (
@@ -386,6 +446,24 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
               <Badge variant="outline" className="shrink-0 border-emerald-400/50 bg-emerald-400/10 font-mono text-emerald-200">
                 {activeCount > 0 ? `${activeCount} 项进行中` : connected ? "等待生成" : "正在连接"}
               </Badge>
+              {activeCount > 0 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 gap-1.5 px-2 font-mono text-xs text-rose-200 hover:bg-rose-400/10 hover:text-rose-50"
+                  disabled={cancellingAll}
+                  onClick={() => void handleCancelActive()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerMove={(event) => event.stopPropagation()}
+                  onPointerUp={(event) => event.stopPropagation()}
+                  aria-label="中断当前进行中的模型请求"
+                  title="停止正在请求大模型的生成"
+                >
+                  <Square className="h-3.5 w-3.5 fill-current" />
+                  {cancellingAll ? "中断中…" : "中断"}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="ghost"
@@ -451,6 +529,19 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
                     <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", isActive(latestSession.phase) ? "animate-pulse bg-emerald-300" : "bg-emerald-500/60")} />
                     <span className="min-w-0 flex-1 truncate font-semibold text-emerald-50">{latestSession.context.label}</span>
                     <span className="shrink-0 text-emerald-100/55">{phaseLabel(latestSession.phase)}</span>
+                    {isActive(latestSession.phase) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 shrink-0 gap-1 px-1.5 font-mono text-[10px] text-rose-200 hover:bg-rose-400/10 hover:text-rose-50"
+                        disabled={cancellingIds.has(sessionId(latestSession)) || cancellingAll}
+                        onClick={() => void handleCancelSession(sessionId(latestSession))}
+                      >
+                        <Square className="h-3 w-3 fill-current" />
+                        中断
+                      </Button>
+                    ) : null}
                   </div>
                   <div className="mb-1 truncate text-[11px] text-emerald-100/45">{latestSession.phaseMessage}</div>
                   <pre className="m-0 whitespace-pre-wrap break-words text-emerald-100/90">{latestPreview}</pre>
@@ -470,19 +561,34 @@ export default function LiveExecutionDialog(props: LiveExecutionDialogProps) {
                           active ? "border-emerald-400/50 shadow-[0_0_0_1px_rgba(52,211,153,0.08)]" : "border-emerald-400/20",
                         )}
                       >
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2 bg-emerald-400/[0.04] px-3 py-2 text-left transition-colors hover:bg-emerald-400/[0.09]"
-                          onClick={() => toggleSession(interactionId)}
-                          aria-expanded={!collapsed}
-                        >
-                          {collapsed ? <ChevronRight className="h-4 w-4 shrink-0 text-emerald-300" /> : <ChevronDown className="h-4 w-4 shrink-0 text-emerald-300" />}
-                          <span className="min-w-0 flex-1 truncate font-semibold text-emerald-50">{session.context.label}</span>
-                          <span className="shrink-0 text-[11px] text-emerald-100/55">{session.totalChars.toLocaleString()} 字符</span>
-                          <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[10px]", active ? "border-emerald-400/45 text-emerald-200" : "border-emerald-400/20 text-emerald-100/65")}>
-                            {phaseLabel(session.phase)}
-                          </span>
-                        </button>
+                        <div className="flex w-full items-center gap-2 bg-emerald-400/[0.04] px-3 py-2">
+                          <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:text-emerald-50"
+                            onClick={() => toggleSession(interactionId)}
+                            aria-expanded={!collapsed}
+                          >
+                            {collapsed ? <ChevronRight className="h-4 w-4 shrink-0 text-emerald-300" /> : <ChevronDown className="h-4 w-4 shrink-0 text-emerald-300" />}
+                            <span className="min-w-0 flex-1 truncate font-semibold text-emerald-50">{session.context.label}</span>
+                            <span className="shrink-0 text-[11px] text-emerald-100/55">{session.totalChars.toLocaleString()} 字符</span>
+                            <span className={cn("shrink-0 rounded border px-1.5 py-0.5 text-[10px]", active ? "border-emerald-400/45 text-emerald-200" : "border-emerald-400/20 text-emerald-100/65")}>
+                              {phaseLabel(session.phase)}
+                            </span>
+                          </button>
+                          {active ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 shrink-0 gap-1 px-2 font-mono text-[10px] text-rose-200 hover:bg-rose-400/10 hover:text-rose-50"
+                              disabled={cancellingIds.has(interactionId) || cancellingAll}
+                              onClick={() => void handleCancelSession(interactionId)}
+                            >
+                              <Square className="h-3 w-3 fill-current" />
+                              中断
+                            </Button>
+                          ) : null}
+                        </div>
                         {!collapsed ? (
                           <div className="border-t border-emerald-400/15 px-3 py-2">
                             <div className="mb-2 text-[11px] text-emerald-100/60">{session.phaseMessage}</div>

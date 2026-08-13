@@ -14,6 +14,19 @@
 - 新建项目必须使用低认知负担向导组织为“来源 -> 内容 -> 规格”。导入小说时不暴露内部 ID，应显示小说标题和章节数，并自动生成可读项目名。
 - 新建项目的赛道选择应提供 AI 推荐入口。推荐必须基于注册 PromptAsset 和结构化输出，返回推荐赛道、适配理由、素材信号、风险和备选赛道；不得用关键词匹配替代 AI 判断。
 - `/drama/projects/:id` 是项目工作台，必须展示当前项目的来源素材、策略、分集、角色、质量状态、分镜视频和导出入口。
+- 项目工作台必须提供「一键生成切图提示词包」入口：项目级流水线 `prompt_pack`，顺序为整理素材 → 策略 → 分集大纲（按 40 集分块直到 `targetEpisodes`）→ 逐集台本 → 逐集分镜，然后准备 `prompt-pack` 导出。该流水线面向图片切换剧：只产出镜头级 `visualPrompt` 与台词，不生成视频提示词、不创建视频 provider 任务、不跑首帧/配音批量。
+- 短剧列表页必须提供「从小说一键生成切图提示词包」主入口：选择本系统已有小说 →（可先推荐赛道）创建 `novel_import` 项目 → 立即启动 `prompt_pack` → 进入项目页查看进度与下载。默认生成集数面向新手先用较小值（如 12），完整向导仍可自定义更大规格。
+- `prompt_pack` 复用 `DramaBatchJob`（`type = "prompt_pack"`，`episodeId = null`），与集级视听批量 `keyframes` / `videos` / `tts` 分离：前者按集推进创意链，后者按镜头推进视听生产。
+- `prompt_pack` 幂等规则：已有 `sourceBundle` 则跳过 assemble（避免重建角色冲掉人工编辑）；已有策略则跳过策略；已有台本/分镜的集默认跳过对应步骤；单集失败记入 `failedEpisodeOrders` 并继续后续集，支持只重试失败集。
+- `prompt_pack` 跳过质量闸/修复阻断：有台本即可生成分镜。质量检查与合规预检仍可在工作台手动执行，但不作为该一键流水线的前置门禁。
+- `GET /api/drama/projects/:id/export?format=prompt-pack` 导出 `ai-novel.drama.prompt-pack.v1`（`exportType=slideshow_prompt_pack`）：按集最新分镜输出镜头顺序、`visualPrompt`、`dialogue`、景别/地点/动作与角色引用；缺 `visualPrompt` 的镜头保留空字段并写入 `warnings`，服务层不得用关键词拼接假提示词。用途是外部出图后另叠台词/字幕。
+- `GET /api/drama/projects/:id/export?format=prompt-pack-captioned` 导出同 schema 族的对话入画提示词包（`exportType=slideshow_captioned_image_pack`，`mode=captioned_image`）：在保留 `visualPrompt`/`dialogue` 的同时，对每镜做确定性后处理生成 `captionedImagePrompt`（把短对话写进出图提示词，要求画进画面底部安全区；无台词则明确禁止加字）。用途是外部出图模型按镜头顺序直接出带字图；本软件不出图，也不负责后续拼接。
+- 工作台与流水线卡片应同时提供两种下载入口，文案需区分「画面与台词分开」与「对话入画、按序出图」，避免用户混淆。
+- 两种提示词包还应提供「复制文本」：剪贴板内容 = 给豆包等外部出图 AI 的开头说明 + 完整导出 JSON，方便用户直接粘贴，不必再手动拼口令。
+- 复制文本在非安全上下文（如纯 HTTP / 部分远程桌面）可能无法写剪贴板：前端必须先尝试 Clipboard API，再回退 `execCommand`，仍失败则自动下载 `.txt`；并提供显式「下载文本」按钮，不依赖剪贴板。
+- 章节编辑器左侧工具区提供「按本章生成切图」：基于当前章节正文（可含未保存草稿）调用注册 Prompt `novel.chapter_editor.image_story_pack`，结构化拆出竖屏镜头序列；服务层对每镜确定性生成 `captionedImagePrompt`（对话入画）。结果可下载 JSON，或复制「豆包说明 + JSON」，供外部出图模型按 `shots.order` 顺序出图组成本章剧情。本能力不出图、不拼动画。
+- 本章切图包格式为 `ai-novel.chapter.image-story-pack.v1`，与短剧项目级 `prompt-pack` / `prompt-pack-captioned` 分离：前者绑定单章正文，后者绑定短剧项目分集分镜。
+- 切图/对话入画提示词必须强调跨镜人物外形锁定，并把角色视觉锚点写入 `visualPrompt`；入画文字只允许短对白，旁白/画外音/叙述句需在生成后确定性过滤，不得作为画面文字。
 - `GET /api/drama/projects/:id` 应返回工作台首屏需要的聚合数据，包括 `sourceBundle`、`characters`、`episodes`、`storyboards`、`shots` 和 `videoPrompts`。
 - 项目详情页必须提供“下一步”主任务卡，根据当前项目产物自动引导整理素材、生成策略、生成分集、生成台本、质量检查、修复、分镜、视频提示词、视频任务或导出。主路径动作应集中在这个任务卡里，避免用户在多个同级按钮之间判断顺序。
 - 前端可以提供主路径快捷按钮，但按钮必须服务于可见产物：生成后用户应能立即看到素材、策略、分集、台本或质量结果。
@@ -68,14 +81,28 @@
 - 剪辑草稿不能把缺失视频结果伪装成可用成片。没有 `resultUrl` 的镜头必须保留在时间轴中并写出 warning，方便用户知道还需要生成或刷新哪些镜头。
 - 成本预估不能替代 provider 侧真实账单。没有配置单价时必须显示为未配置或 0；实际费用只代表系统按已配置单价和已处理镜头推算出的项目内生产成本。
 - 批量任务不能把 provider 任务成功创建误判为视频成片完成。`videos` 批量任务的 `done` 表示镜头已进入 provider 任务队列或被跳过，最终视频结果仍以 `DramaVideoPrompt.status / resultUrl / failureReason` 为准。
+- 不要把 `prompt_pack` 创意流水线塞进集级 `keyframes|videos|tts` 语义：两者共享 `DramaBatchJob` 表，但进度字段、目标粒度和产品出口不同；混淆后会导致前端把切图提示词包当成视频批量，或让视听队列误跑整项目大纲。
+- `prompt_pack` 若在已有 `sourceBundle` 时仍强制 assemble，会重建角色并冲掉人工编辑的造型/声线锚点。
+- `prompt-pack` 导出不能在缺 `visualPrompt` 时用 action/location 拼装伪提示词；应保留空值与 warning，让用户知道要补分镜或重跑该集。
+- `prompt-pack-captioned` 的 `captionedImagePrompt` 只能由已有 `visualPrompt` + `dialogue` 确定性拼接，不得再跑一轮 LLM 或用关键词路由改写画面；与 `prompt-pack` 混用会导致「外挂字幕」与「对话入画」工作流互相踩脚。
 - 配音任务不能把说话人文本当作固定角色 ID。声线绑定只能来自当前项目角色名与对白说话人的匹配；无法匹配时应保留台词合成能力，并把缺失 voiceId 暴露为后续角色资产补全问题。
 - 多次生成后如果仍按 `createdAt desc` 直接取第一条视频提示词，旧数据迁移、同版本旧记录或历史记录都可能进入批量和导出链路。所有生产消费者必须先排除 `superseded`，再按版本选择当前记录。
 - 图片重生成如果只覆盖 `keyframe.png` 或 `character-sheet.png` 而不归档，用户无法回看旧构图，视频参考图也难以追溯。历史归档必须在写入新文件前完成；新图扩展名变化时要清理其他当前文件变体，避免静态服务继续读到旧格式文件。
 
 ## Related Modules
 
+- `client/src/pages/novels/components/chapterEditor/ChapterEditorImageStoryPackPanel.tsx`
+- `client/src/pages/novels/components/chapterEditor/chapterImageStoryCopy.ts`
+- `server/src/services/novel/chapterEditor/ChapterImageStoryPackService.ts`
+- `server/src/prompting/prompts/novel/chapterEditor/imageStoryPack.prompts.ts`
 - `client/src/pages/drama/DramaWorkspacePage.tsx`
 - `client/src/pages/drama/DramaProjectPage.tsx`
+- `client/src/pages/drama/components/DramaPromptPackPipelineCard.tsx`
+- `client/src/pages/drama/dramaPromptPackCopy.ts`
 - `client/src/api/drama.ts`
 - `server/src/modules/drama/http/dramaRoutes.ts`
+- `server/src/modules/drama/http/dramaPromptPackRoutes.ts`
 - `server/src/services/drama/DramaProjectService.ts`
+- `server/src/services/drama/production/DramaPromptPackPipeline.ts`
+- `server/src/services/drama/DramaExportService.ts`
+- `server/src/services/drama/export/buildCaptionedImagePrompt.ts`

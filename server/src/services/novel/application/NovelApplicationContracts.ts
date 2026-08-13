@@ -73,6 +73,7 @@ export interface NovelApplicationServices {
   previewChapterRewrite: NovelApplicationMethod;
   previewChapterAiRevision: NovelApplicationMethod;
   detectChapterAiWriting: NovelApplicationMethod;
+  generateChapterImageStoryPack: NovelApplicationMethod;
   listChapterStyleBenchmarkSources: NovelApplicationMethod;
   rewriteChapterStyleBenchmark: NovelApplicationMethod;
   compareChapterStyleBenchmark: NovelApplicationMethod;
@@ -202,6 +203,7 @@ export const novelApplicationServiceMethodNames = [
   "previewChapterRewrite",
   "previewChapterAiRevision",
   "detectChapterAiWriting",
+  "generateChapterImageStoryPack",
   "listChapterStyleBenchmarkSources",
   "rewriteChapterStyleBenchmark",
   "compareChapterStyleBenchmark",

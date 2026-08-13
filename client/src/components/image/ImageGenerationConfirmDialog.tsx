@@ -5,22 +5,44 @@
  * 在真正消耗 token 前展示：即将发送的 prompt + 参考图素材 + 模型/尺寸；
  * 用户可临时修改 prompt / provider / size，确认后才发起生图。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Image as ImageIcon, Info, Loader2, Sparkles, Wand2, X } from "lucide-react";
+import { ClipboardPaste, Copy, Image as ImageIcon, Info, Loader2, Sparkles, Upload, Wand2, X } from "lucide-react";
 
 import { Dialog, AppDialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { getAPIKeySettings } from "@/api/settings";
+import { getAPIKeySettings, getImageSelectionSetting } from "@/api/settings";
+import { queryKeys } from "@/api/queryKeys";
+import {
+  isImageCapableProvider,
+  listImageModelsForProvider,
+  resolveDefaultImageModel,
+} from "@/lib/imageSelection";
 import type { ImageGenerationOverrides, ImageGenerationPreview } from "@/api/comic";
 import { assistImageGenerationPrompt, resolveImageAssetUrl, type ImagePromptAssistResult } from "@/api/images";
 import { toast } from "@/components/ui/toast";
 import SelectControl from "@/components/common/SelectControl";
+import { copyTextWithFallback, describeCopyResult } from "@/lib/clipboard";
+import {
+  extractImageFileFromClipboardEvent,
+  readClipboardImageFile,
+} from "@/lib/clipboardImage";
+import {
+  applyComicTextToImageTaskLead,
+  resolveComicImageTaskKind,
+} from "@/lib/comicImageTaskPrompt";
 
 const SIZE_OPTIONS = [
   { value: "1024x1024", label: "1024×1024（方形 1:1）" },
   { value: "1024x1536", label: "1024×1536（竖版 2:3，漫画/角色）" },
   { value: "1536x1024", label: "1536×1024（横版 3:2，三视图/表情稿）" },
+];
+
+const COUNT_OPTIONS = [
+  { value: 1, label: "1 张" },
+  { value: 2, label: "2 张（生成后选一张）" },
+  { value: 3, label: "3 张（生成后选一张）" },
+  { value: 4, label: "4 张（生成后选一张）" },
 ];
 
 const REF_KIND_LABEL: Record<string, string> = {
@@ -47,9 +69,12 @@ interface Props {
   open: boolean;
   preview: ImageGenerationPreview | null;
   loading?: boolean;          // prepare 中
-  submitting?: boolean;       // generate 中
+  submitting?: boolean;       // generate / upload 中
+  manualMode?: boolean;       // 顶部勾选「人工干预生成图片」
+  supportsManualUpload?: boolean;
   onCancel: () => void;
   onConfirm: (overrides: ImageGenerationOverrides) => void;
+  onManualUpload?: (file: File) => void;
 }
 
 export function ImageGenerationConfirmDialog({
@@ -57,15 +82,22 @@ export function ImageGenerationConfirmDialog({
   preview,
   loading,
   submitting,
+  manualMode = false,
+  supportsManualUpload = false,
   onCancel,
   onConfirm,
+  onManualUpload,
 }: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
   const [optimizationInstruction, setOptimizationInstruction] = useState("");
   const [includedReferenceImageUrls, setIncludedReferenceImageUrls] = useState<string[]>([]);
   const [provider, setProvider] = useState("");
+  const [model, setModel] = useState("");
   const [size, setSize] = useState("");
+  const [count, setCount] = useState(1);
   const [promptAssistAction, setPromptAssistAction] = useState<PromptAssistAction | null>(null);
   const [promptAssistLoading, setPromptAssistLoading] = useState<PromptAssistAction | null>(null);
   const [promptAssistResult, setPromptAssistResult] = useState<ImagePromptAssistResult | null>(null);
@@ -74,12 +106,16 @@ export function ImageGenerationConfirmDialog({
   // 弹窗重新打开或 preview 变更时，重置编辑态为预览默认值
   useEffect(() => {
     if (preview) {
-      setPrompt(preview.prompt);
+      const included = preview.referenceImages.map((ref) => ref.url);
+      const taskKind = resolveComicImageTaskKind(preview.kind);
+      setPrompt(applyComicTextToImageTaskLead(preview.prompt, taskKind, included.length > 0));
       setNegativePrompt(preview.negativePrompt ?? "");
       setOptimizationInstruction("");
-      setIncludedReferenceImageUrls(preview.referenceImages.map((ref) => ref.url));
+      setIncludedReferenceImageUrls(included);
       setProvider(preview.provider);
+      setModel(preview.model ?? "");
       setSize(preview.size);
+      setCount(1);
       setPromptAssistAction(null);
       setPromptAssistLoading(null);
       setPromptAssistResult(null);
@@ -87,22 +123,45 @@ export function ImageGenerationConfirmDialog({
     }
   }, [preview]);
 
-  // 可用 provider 列表（图像生成 + 已配置）
-  const { data: providerOptions = [] } = useQuery({
-    queryKey: ["settings", "api-keys"],
+  const { data: imageProviders = [] } = useQuery({
+    queryKey: queryKeys.settings.apiKeys,
     queryFn: getAPIKeySettings,
-    select: (res) =>
-      (res.data ?? [])
-        .filter((p) => p.supportsImageGeneration && p.isConfigured)
-        .map((p) => ({ value: p.provider, label: p.displayName ?? p.name })),
+    select: (res) => (res.data ?? []).filter(isImageCapableProvider),
   });
 
-  // 当前 provider 不在可用列表里时，临时追加为选项（不丢失数据）
+  const { data: imageSelection } = useQuery({
+    queryKey: queryKeys.settings.imageSelection,
+    queryFn: getImageSelectionSetting,
+    select: (res) => res.data,
+  });
+
   const providerChoices = useMemo(() => {
-    if (!provider) return providerOptions;
-    if (providerOptions.some((p) => p.value === provider)) return providerOptions;
-    return [...providerOptions, { value: provider, label: provider }];
-  }, [provider, providerOptions]);
+    const options = imageProviders.map((p) => ({
+      value: p.provider,
+      label: p.displayName ?? p.name,
+    }));
+    if (!provider) return options;
+    if (options.some((p) => p.value === provider)) return options;
+    return [...options, { value: provider, label: provider }];
+  }, [provider, imageProviders]);
+
+  const selectedProviderMeta = imageProviders.find((p) => p.provider === provider);
+  const modelChoices = useMemo(() => {
+    const options = listImageModelsForProvider(selectedProviderMeta);
+    if (model && !options.includes(model)) options.unshift(model);
+    if (preview?.model && !options.includes(preview.model)) options.unshift(preview.model);
+    return options;
+  }, [selectedProviderMeta, model, preview?.model]);
+
+  useEffect(() => {
+    if (!open || !provider) return;
+    if (model) return;
+    const preferred =
+      preview?.model
+      || (imageSelection?.provider === provider ? imageSelection.model : undefined);
+    const next = resolveDefaultImageModel(selectedProviderMeta, preferred);
+    if (next) setModel(next);
+  }, [open, provider, model, preview?.model, imageSelection, selectedProviderMeta]);
 
   // size 也保证当前值在列表里
   const sizeChoices = useMemo(() => {
@@ -114,7 +173,9 @@ export function ImageGenerationConfirmDialog({
   const promptDirty = preview ? prompt.trim() !== preview.prompt.trim() : false;
   const negativePromptDirty = preview ? negativePrompt.trim() !== (preview.negativePrompt ?? "").trim() : false;
   const providerDirty = preview ? provider !== preview.provider : false;
+  const modelDirty = preview ? Boolean(model) && model !== (preview.model ?? "") : Boolean(model);
   const sizeDirty = preview ? size !== preview.size : false;
+  const countDirty = count !== 1;
   const referenceImages = useMemo(
     () => preview?.referenceImages.filter((ref) => includedReferenceImageUrls.includes(ref.url)) ?? [],
     [includedReferenceImageUrls, preview],
@@ -126,15 +187,32 @@ export function ImageGenerationConfirmDialog({
     [includedReferenceImageUrls, preview],
   );
   const referenceDirty = excludedReferenceImageUrls.length > 0;
-  const anyDirty = promptDirty || negativePromptDirty || providerDirty || sizeDirty || referenceDirty;
+  const anyDirty = promptDirty || negativePromptDirty || providerDirty || modelDirty || sizeDirty || countDirty || referenceDirty;
+  const taskKind = resolveComicImageTaskKind(preview?.kind);
+  const hasSelectedReferenceImages = referenceImages.length > 0;
+
+  const syncPromptForReferences = (nextIncludedUrls: string[]) => {
+    setIncludedReferenceImageUrls(nextIncludedUrls);
+    setPrompt((prev) =>
+      applyComicTextToImageTaskLead(
+        prev,
+        resolveComicImageTaskKind(preview?.kind),
+        nextIncludedUrls.length > 0,
+      ),
+    );
+  };
 
   const handleConfirm = () => {
     if (!preview) return;
+    const finalPrompt = applyComicTextToImageTaskLead(prompt.trim(), taskKind, hasSelectedReferenceImages);
+    const shouldOverridePrompt = finalPrompt !== preview.prompt.trim() || promptDirty || referenceDirty;
     onConfirm({
-      promptOverride: promptDirty ? prompt.trim() : undefined,
+      promptOverride: shouldOverridePrompt ? finalPrompt : undefined,
       negativePromptOverride: negativePromptDirty ? negativePrompt.trim() : undefined,
       providerOverride: providerDirty ? provider : undefined,
+      modelOverride: modelDirty ? model : undefined,
       sizeOverride: sizeDirty ? size : undefined,
+      countOverride: countDirty ? count : undefined,
       excludedReferenceImageUrls: referenceDirty ? excludedReferenceImageUrls : undefined,
     });
   };
@@ -181,19 +259,102 @@ export function ImageGenerationConfirmDialog({
     }
   };
 
+  const applyManualFile = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("请选择图片文件（PNG / JPEG / WebP）");
+      return;
+    }
+    if (!supportsManualUpload || !onManualUpload) {
+      toast.error("当前入口暂不支持人工上传");
+      return;
+    }
+    onManualUpload(file);
+  };
+
+  const pasteManualImage = async () => {
+    try {
+      const file = await readClipboardImageFile();
+      if (!file) {
+        toast.error("剪贴板里没有可用图片，请先复制图片后再粘贴");
+        return;
+      }
+      applyManualFile(file);
+    } catch {
+      toast.error("读取剪贴板失败，可改用 Ctrl+V 粘贴，或直接上传文件");
+    }
+  };
+
+  const handleManualPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const file = extractImageFileFromClipboardEvent(event.nativeEvent);
+    if (!file) return;
+    event.preventDefault();
+    applyManualFile(file);
+  };
+
+  const copyPrompt = async () => {
+    const text = applyComicTextToImageTaskLead(prompt, taskKind, hasSelectedReferenceImages).trim();
+    if (!text) {
+      toast.error("提示词为空，无法复制");
+      return;
+    }
+    if (text !== prompt) {
+      setPrompt(text);
+    }
+    try {
+      const result = await copyTextWithFallback(text, {
+        downloadFilename: "image-prompt.txt",
+        sourceElement: promptTextareaRef.current,
+      });
+      toast.success(describeCopyResult(result));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "复制失败，请手动全选提示词后复制");
+    }
+  };
+
   const footer = preview ? (
     <div className="flex w-full items-center justify-between gap-3">
       <p className="text-[11px] text-muted-foreground">
-        {anyDirty ? "本次将使用上方修改后的参数生图（仅一次性，不保存到角色）" : "点击「开始生图」按当前参数生成"}
+        {manualMode
+          ? supportsManualUpload
+            ? "把提示词复制到外部出图工具，再把结果粘贴或上传回来"
+            : "当前入口暂不支持人工上传，请关闭顶部「人工干预」或改用旁路上传"
+          : anyDirty
+            ? "本次将使用上方修改后的参数生图（仅一次性，不保存到角色）"
+            : "点击「开始生图」按当前参数生成"}
       </p>
       <div className="flex gap-2">
         <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={submitting}>
           取消
         </Button>
-        <Button type="button" size="sm" onClick={handleConfirm} disabled={submitting || !prompt.trim()}>
-          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-          {submitting ? "生成中..." : "开始生图"}
-        </Button>
+        {manualMode ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={submitting || !supportsManualUpload}
+              onClick={() => void pasteManualImage()}
+            >
+              <ClipboardPaste className="h-3.5 w-3.5" />
+              粘贴图片
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={submitting || !supportsManualUpload}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {submitting ? "上传中..." : "上传图片"}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" size="sm" onClick={handleConfirm} disabled={submitting || !prompt.trim()}>
+            {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {submitting ? "生成中..." : "开始生图"}
+          </Button>
+        )}
       </div>
     </div>
   ) : null;
@@ -201,12 +362,22 @@ export function ImageGenerationConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
       <AppDialogContent
-        title="生图前确认"
+        title={manualMode ? "人工干预生图" : "生图前确认"}
         description={preview?.title}
         footer={footer}
         className="max-w-3xl"
         onPointerDownOutside={(e) => e.preventDefault()}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            applyManualFile(event.target.files?.[0]);
+            event.target.value = "";
+          }}
+        />
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -214,6 +385,112 @@ export function ImageGenerationConfirmDialog({
           </div>
         ) : !preview ? (
           <div className="py-12 text-center text-sm text-muted-foreground">无预览数据</div>
+        ) : manualMode ? (
+          <div
+            className="space-y-4 outline-none"
+            tabIndex={0}
+            onPaste={handleManualPaste}
+            aria-label="人工干预生图，可粘贴图片"
+          >
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+              已开启人工干预：不调用图像模型。请复制下方提示词到外部工具出图，再把结果粘贴或上传到这里。
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-muted-foreground">提示词</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void copyPrompt();
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  复制提示词
+                </Button>
+              </div>
+              <textarea
+                ref={promptTextareaRef}
+                className="w-full resize-y rounded-md border bg-background px-2.5 py-1.5 text-xs leading-relaxed font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                style={{ minHeight: 180, maxHeight: 320 }}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                disabled={submitting}
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {prompt.length} 字符 · 可先编辑再复制
+                {hasSelectedReferenceImages
+                  ? " · 已选附加图，未加文生图声明"
+                  : " · 无附加图，已加文生图声明"}
+              </p>
+            </div>
+            {preview.referenceImages.length > 0 ? (
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  附加参考图
+                  <span className="rounded border bg-muted px-1.5 py-0.5 text-[10px] font-normal">
+                    {referenceImages.length}/{preview.referenceImages.length}
+                  </span>
+                  {referenceDirty ? (
+                    <button
+                      type="button"
+                      className="ml-auto text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      onClick={() => syncPromptForReferences(preview.referenceImages.map((ref) => ref.url))}
+                      disabled={submitting}
+                    >
+                      全部选中
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ml-auto text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      onClick={() => syncPromptForReferences([])}
+                      disabled={submitting}
+                    >
+                      全部取消
+                    </button>
+                  )}
+                </div>
+                <p className="mb-1.5 text-[10px] text-muted-foreground">
+                  选中时提示词不加「文生图」声明（方便你在外部工具里配合参考图）；全部取消后会自动加上声明。
+                </p>
+                <div className="flex flex-wrap gap-2 rounded-md border bg-muted/10 p-2">
+                  {preview.referenceImages.map((ref, i) => {
+                    const selected = includedReferenceImageUrls.includes(ref.url);
+                    return (
+                      <button
+                        key={`${ref.url}-${i}`}
+                        type="button"
+                        title={selected ? "点击取消选中这张附加图" : "点击选中这张附加图"}
+                        className={`relative overflow-hidden rounded border bg-background ${selected ? "ring-2 ring-primary" : "opacity-50"}`}
+                        onClick={() => {
+                          const next = selected
+                            ? includedReferenceImageUrls.filter((url) => url !== ref.url)
+                            : [...includedReferenceImageUrls, ref.url];
+                          syncPromptForReferences(next);
+                        }}
+                        disabled={submitting}
+                      >
+                        <img
+                          src={resolveImageAssetUrl(ref.url)}
+                          alt={ref.label}
+                          className="h-24 w-auto object-contain"
+                        />
+                        <span className="block border-t px-1.5 py-1 text-left text-[10px] text-muted-foreground">{ref.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <div className="rounded-md border border-dashed bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground">
+              {submitting ? "正在保存图片…" : "也可直接在此区域 Ctrl+V 粘贴图片，或点下方「上传图片」"}
+            </div>
+          </div>
         ) : (
           <div className="space-y-4">
             {/* 参考图素材 */}
@@ -228,7 +505,7 @@ export function ImageGenerationConfirmDialog({
                   <button
                     type="button"
                     className="ml-auto text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                    onClick={() => setIncludedReferenceImageUrls(preview.referenceImages.map((ref) => ref.url))}
+                    onClick={() => syncPromptForReferences(preview.referenceImages.map((ref) => ref.url))}
                     disabled={submitting || !!promptAssistLoading}
                   >
                     恢复全部
@@ -241,7 +518,7 @@ export function ImageGenerationConfirmDialog({
                 </div>
               ) : referenceImages.length === 0 ? (
                 <div className="rounded-md border border-dashed bg-muted/20 px-3 py-3 text-center text-[11px] text-muted-foreground">
-                  本次生成不会发送参考图
+                  本次生成不会发送参考图（提示词已加上文生图声明）
                 </div>
               ) : (
                 <div className="flex flex-wrap items-end gap-2 rounded-md border bg-muted/10 p-2">
@@ -258,7 +535,7 @@ export function ImageGenerationConfirmDialog({
                           className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border bg-background/95 text-muted-foreground shadow-sm hover:text-destructive"
                           title="本次不发送这张参考图"
                           onClick={() => {
-                            setIncludedReferenceImageUrls((urls) => urls.filter((url) => url !== ref.url));
+                            syncPromptForReferences(includedReferenceImageUrls.filter((url) => url !== ref.url));
                             clearPromptAssistResult();
                           }}
                           disabled={submitting || !!promptAssistLoading}
@@ -316,7 +593,11 @@ export function ImageGenerationConfirmDialog({
                       type="button"
                       className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                       onClick={() => {
-                        setPrompt(preview.prompt);
+                        setPrompt(applyComicTextToImageTaskLead(
+                          preview.prompt,
+                          resolveComicImageTaskKind(preview.kind),
+                          includedReferenceImageUrls.length > 0,
+                        ));
                         clearPromptAssistResult();
                       }}
                       disabled={submitting || !!promptAssistLoading}
@@ -327,6 +608,7 @@ export function ImageGenerationConfirmDialog({
                 </div>
               </div>
               <textarea
+                ref={manualMode ? undefined : promptTextareaRef}
                 className="w-full resize-y rounded-md border bg-background px-2.5 py-1.5 text-xs leading-relaxed font-mono outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
                 style={{ minHeight: 160, maxHeight: 280 }}
                 value={prompt}
@@ -336,7 +618,10 @@ export function ImageGenerationConfirmDialog({
                 }}
                 disabled={submitting || !!promptAssistLoading}
               />
-              <p className="mt-1 text-[10px] text-muted-foreground">{prompt.length} 字符 · 临时修改不会改动角色/项目设置</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {prompt.length} 字符 · 临时修改不会改动角色/项目设置
+                {hasSelectedReferenceImages ? " · 已附带参考图，未加文生图声明" : " · 无参考图，已加文生图声明"}
+              </p>
               <div className="mt-2">
                 <div className="mb-1 flex items-center justify-between">
                   <p className="text-xs font-semibold text-muted-foreground">优化要求</p>
@@ -460,18 +745,21 @@ export function ImageGenerationConfirmDialog({
               </div>
             )}
 
-            {/* 参数：provider / size */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* 参数：provider / model / size / count */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <p className="mb-1 text-xs font-semibold text-muted-foreground">
-                  图片模型
+                  图片供应商
                   {providerDirty && <span className="ml-1.5 rounded bg-amber-100 px-1 py-px text-[9px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">已修改</span>}
                 </p>
                 <SelectControl
                   className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
                   value={provider}
                   onChange={(e) => {
-                    setProvider(e.target.value);
+                    const nextProvider = e.target.value;
+                    const nextMeta = imageProviders.find((item) => item.provider === nextProvider);
+                    setProvider(nextProvider);
+                    setModel(resolveDefaultImageModel(nextMeta));
                     clearPromptAssistResult();
                   }}
                   disabled={submitting || !!promptAssistLoading}
@@ -481,6 +769,29 @@ export function ImageGenerationConfirmDialog({
                   ) : (
                     providerChoices.map((p) => (
                       <option key={p.value} value={p.value}>{p.label}</option>
+                    ))
+                  )}
+                </SelectControl>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                  图像模型
+                  {modelDirty && <span className="ml-1.5 rounded bg-amber-100 px-1 py-px text-[9px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">已修改</span>}
+                </p>
+                <SelectControl
+                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  value={model}
+                  onChange={(e) => {
+                    setModel(e.target.value);
+                    clearPromptAssistResult();
+                  }}
+                  disabled={submitting || !!promptAssistLoading || modelChoices.length === 0}
+                >
+                  {modelChoices.length === 0 ? (
+                    <option value="">请先选择供应商</option>
+                  ) : (
+                    modelChoices.map((item) => (
+                      <option key={item} value={item}>{item}</option>
                     ))
                   )}
                 </SelectControl>
@@ -499,8 +810,27 @@ export function ImageGenerationConfirmDialog({
                   }}
                   disabled={submitting || !!promptAssistLoading}
                 >
-                  {sizeChoices.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
+                  {sizeChoices.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </SelectControl>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-semibold text-muted-foreground">
+                  生成张数
+                  {countDirty && <span className="ml-1.5 rounded bg-amber-100 px-1 py-px text-[9px] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">已修改</span>}
+                </p>
+                <SelectControl
+                  className="w-full rounded-md border bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  value={String(count)}
+                  onChange={(e) => {
+                    setCount(Number(e.target.value) || 1);
+                    clearPromptAssistResult();
+                  }}
+                  disabled={submitting || !!promptAssistLoading}
+                >
+                  {COUNT_OPTIONS.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
                   ))}
                 </SelectControl>
               </div>

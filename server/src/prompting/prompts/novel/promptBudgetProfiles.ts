@@ -24,6 +24,7 @@ export const NOVEL_PROMPT_BUDGETS = {
   chapterEditorUserIntent: 900,
   chapterEditorRewrite: 1400,
   chapterEditorAiWritingDetect: 1600,
+  chapterEditorImageStoryPack: 4200,
   chapterEditorStyleBenchmarkEssence: 3200,
   chapterEditorStyleBenchmarkRewrite: 3200,
   chapterEditorStyleBenchmarkSegmentRewrite: 2200,

@@ -25,6 +25,13 @@
 - 切换厂商时不自动向远端拉取模型目录；只有用户点击刷新按钮（顶部选择器或设置页厂商卡片）时才调用 `POST /settings/api-keys/:provider/refresh-models`，并写回本地缓存。
 - 没有保存模型的内置厂商不应因为 `PROVIDERS.*.defaultModel` 存在就被视为可运行；需要保存模型、环境模型或可拉取的模型目录。
 - 模型路由、结构化兜底和各任务的显式模型覆盖仍属于独立配置；它们不等同于顶部当前模型。
+- 当请求未显式传入 provider/model 时，`resolveLLMClientOptions` 优先使用已保存的 `llm.currentSelection`，再回退到任务路由或内置 DeepSeek 默认。短剧流水线等未带模型参数的后台路径依赖这一规则，避免误打到未配置余额的 DeepSeek。
+- 短剧工作台与小说生产一致：前端文本类 AI 请求应附带当前顶部选择的 provider/model/temperature。
+- 默认图片选择保存在 `AppSetting` 的 `image.currentSelection`（`provider` + `model`）。
+- 系统设置「开始创作必需」提供「默认图片模型」卡片：先选图片供应商，再选图像模型；漫画工作台页内与生图确认弹窗同构。
+- 文本类漫画任务（大纲、分镜脚本等）不走图片默认，继续使用顶部文本模型 / `llm.currentSelection`。
+- 出图 runtime（`runImageGeneration`）解析模型顺序：请求显式 `model` / `modelOverride` → 全局 `image.currentSelection`（仅当 provider 一致）→ 厂商 `provider.imageModel.*` 默认。
+- 「刷新模型」会调用 `/settings/api-keys/:provider/refresh-models`：刷新文本模型目录，同时从目录中筛出疑似图像模型，写入 `provider.imageModelCatalog.{provider}`，并回填到设置页 / 漫画页的图像模型下拉。
 
 ## 示例
 
@@ -49,8 +56,13 @@
 ## 相关模块
 
 - `server/src/services/settings/LLMSelectionSettingsService.ts`
+- `server/src/services/settings/ImageSelectionSettingsService.ts`
+- `server/src/llm/factory.ts`（无显式模型时回退到 `llm.currentSelection`）
+- `client/src/pages/drama/dramaLlmOptions.ts`
 - `server/src/routes/settings/llmSelectionRoutes.ts`
+- `server/src/routes/settings/imageSelectionRoutes.ts`
 - `server/src/routes/settings.ts`
+- `client/src/pages/settings/components/DefaultImageProviderSettingsCard.tsx`
 - `server/src/llm/modelCatalog.ts`
 - `client/src/components/layout/LLMSelectionBootstrap.tsx`
 - `client/src/components/common/LLMSelector.tsx`

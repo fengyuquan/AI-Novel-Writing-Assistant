@@ -63,6 +63,16 @@ function updateSession(
       completedAt: event.at,
     };
   }
+  if (event.type === "session_cancelled") {
+    return {
+      ...current,
+      seq: event.seq,
+      phase: "cancelled",
+      phaseMessage: event.message,
+      updatedAt: event.at,
+      completedAt: event.at,
+    };
+  }
   return {
     ...current,
     seq: event.seq,

@@ -1,7 +1,16 @@
 import { prisma } from "../../db/prisma";
+import {
+  buildCaptionedImagePrompt,
+  CAPTIONED_IMAGE_USAGE_HINT,
+  SLIDESHOW_USAGE_HINT,
+} from "./export/buildCaptionedImagePrompt";
+import {
+  appendCharacterVisualLocks,
+  sanitizeSpokenDialogue,
+} from "./export/imageStoryPromptEnrichment";
 import { safeJsonParse } from "./utils/json";
 
-export type DramaProjectExportFormat = "markdown" | "json";
+export type DramaProjectExportFormat = "markdown" | "json" | "prompt-pack" | "prompt-pack-captioned";
 export type DramaEpisodeExportFormat = "srt" | "timeline-json";
 
 interface SubtitleEntry {
@@ -136,12 +145,26 @@ export class DramaExportService {
     const project = await prisma.dramaProject.findUnique({
       where: { id: projectId },
       include: {
-        episodes: { orderBy: { order: "asc" } },
+        episodes: {
+          orderBy: { order: "asc" },
+          include: {
+            storyboards: {
+              orderBy: { createdAt: "desc" },
+              include: { shots: { orderBy: { order: "asc" } } },
+            },
+          },
+        },
         characters: { orderBy: { createdAt: "asc" } },
       },
     });
     if (!project) {
       throw new Error(`未找到短剧项目：${projectId}`);
+    }
+    if (format === "prompt-pack") {
+      return this.buildPromptPackExport(project, "slideshow");
+    }
+    if (format === "prompt-pack-captioned") {
+      return this.buildPromptPackExport(project, "captioned_image");
     }
     if (format === "json") {
       return {
@@ -178,6 +201,155 @@ export class DramaExportService {
       contentType: "text/markdown; charset=utf-8",
       filename: `${project.title}-short-drama.md`,
       body,
+    };
+  }
+
+  private buildPromptPackExport(project: {
+    title: string;
+    track: string | null;
+    theme: string | null;
+    targetEpisodes: number;
+    characters: Array<{
+      name: string;
+      persona: string | null;
+      visualAnchor: string | null;
+      archetype: string | null;
+    }>;
+    episodes: Array<{
+      id: string;
+      order: number;
+      title: string;
+      storyboards: Array<{
+        id: string;
+        shots: Array<{
+          order: number;
+          durationSec: number | null;
+          location: string | null;
+          action: string;
+          shotSize: string | null;
+          cameraMove: string | null;
+          characterRefs: string | null;
+          visualPrompt: string | null;
+          dialogue: string | null;
+        }>;
+      }>;
+    }>;
+  }, packMode: "slideshow" | "captioned_image") {
+    const warnings: string[] = [];
+    const captioned = packMode === "captioned_image";
+    const characterLockList = project.characters.map((character) => ({
+      name: character.name,
+      visualAnchor: character.visualAnchor,
+    }));
+    const episodes = project.episodes.map((episode) => {
+      const storyboard = episode.storyboards[0];
+      if (!storyboard) {
+        warnings.push(`第 ${episode.order} 集还没有分镜。`);
+        return {
+          order: episode.order,
+          title: episode.title,
+          storyboardId: null as string | null,
+          shots: [] as Array<Record<string, unknown>>,
+        };
+      }
+      const shots = storyboard.shots.map((shot) => {
+        const characterRefs = safeJsonParse<string[]>(shot.characterRefs, [])
+          .map((name) => (typeof name === "string" ? name.trim() : ""))
+          .filter(Boolean);
+        const rawVisual = shot.visualPrompt?.trim() || "";
+        if (!rawVisual) {
+          warnings.push(`第 ${episode.order} 集镜头 ${shot.order} 缺少 visualPrompt。`);
+        }
+        const visualPrompt = captioned
+          ? appendCharacterVisualLocks(rawVisual, characterRefs, characterLockList)
+          : rawVisual;
+        const dialogue = captioned
+          ? sanitizeSpokenDialogue(shot.dialogue)
+          : (shot.dialogue?.trim() || null);
+        if (captioned && shot.dialogue?.trim() && !dialogue) {
+          warnings.push(`第 ${episode.order} 集镜头 ${shot.order} 的 dialogue 已按旁白/叙述过滤，本镜不入画文字。`);
+        }
+        const baseShot: Record<string, unknown> = {
+          order: shot.order,
+          durationSec: shot.durationSec,
+          location: shot.location,
+          action: shot.action,
+          shotSize: shot.shotSize,
+          cameraMove: shot.cameraMove,
+          characterRefs,
+          visualPrompt: captioned ? visualPrompt : shot.visualPrompt,
+          dialogue: captioned ? dialogue : shot.dialogue,
+        };
+        if (captioned) {
+          baseShot.captionedImagePrompt = buildCaptionedImagePrompt({
+            visualPrompt,
+            dialogue,
+          });
+        }
+        return baseShot;
+      });
+      return {
+        order: episode.order,
+        title: episode.title,
+        storyboardId: storyboard.id,
+        shots,
+      };
+    });
+
+    const pack = captioned
+      ? {
+        format: "ai-novel.drama.prompt-pack.v1",
+        exportType: "slideshow_captioned_image_pack",
+        mode: "captioned_image" as const,
+        aspectRatio: "9:16",
+        project: {
+          title: project.title,
+          track: project.track,
+          theme: project.theme,
+          targetEpisodes: project.targetEpisodes,
+        },
+        characters: project.characters.map((character) => ({
+          name: character.name,
+          archetype: character.archetype,
+          persona: character.persona,
+          visualAnchor: character.visualAnchor,
+        })),
+        episodes,
+        warnings,
+        usageHint: CAPTIONED_IMAGE_USAGE_HINT,
+      }
+      : {
+        format: "ai-novel.drama.prompt-pack.v1",
+        exportType: "slideshow_prompt_pack",
+        mode: "slideshow" as const,
+        aspectRatio: "9:16",
+        project: {
+          title: project.title,
+          track: project.track,
+          theme: project.theme,
+          targetEpisodes: project.targetEpisodes,
+        },
+        characters: project.characters.map((character) => ({
+          name: character.name,
+          archetype: character.archetype,
+          persona: character.persona,
+          visualAnchor: character.visualAnchor,
+        })),
+        episodes,
+        warnings,
+        usageHint: SLIDESHOW_USAGE_HINT,
+      };
+
+    if (!episodes.some((episode) => episode.shots.length > 0)) {
+      throw new Error("当前项目还没有可用分镜，无法导出切图提示词包。");
+    }
+
+    return {
+      contentType: "application/json; charset=utf-8",
+      filename: captioned
+        ? `${project.title}-prompt-pack-captioned.json`
+        : `${project.title}-prompt-pack.json`,
+      body: JSON.stringify(pack, null, 2),
     };
   }
 

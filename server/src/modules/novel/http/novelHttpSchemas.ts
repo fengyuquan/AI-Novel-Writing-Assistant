@@ -577,6 +577,13 @@ export const aiWritingDetectSchema = z.object({
   includeDeterministic: z.boolean().optional(),
 });
 
+export const chapterImageStoryPackSchema = z.object({
+  content: z.string().optional(),
+  provider: llmProviderSchema.optional(),
+  model: z.string().trim().max(120).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+});
+
 export const styleBenchmarkReferenceSchema = z.object({
   kind: z.enum(["style_profile", "knowledge_document", "novel"]),
   id: z.string().trim().min(1).max(120),

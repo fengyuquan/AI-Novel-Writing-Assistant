@@ -18,7 +18,9 @@ import {
 } from "../../llm/usageTracking";
 import { logMemoryUsage } from "../../runtime/memoryTelemetry";
 import { toText } from "../../services/novel/novelP0Utils";
+import { mergeAbortSignals } from "../../llm/invokeTimeout";
 import { beginLlmLiveSession } from "../../platform/llm/live/llmLiveSession";
+import type { LlmLiveSession } from "../../platform/llm/live/LlmLiveBroker";
 import { hasRegisteredPromptAsset } from "../registry";
 import { CUSTOM_SLOT_CONTEXT_GROUP } from "../slots/slotResolution";
 import { promptSlotOverrideService } from "../slots/PromptSlotOverrideService";
@@ -154,12 +156,20 @@ function safeJsonStringify(value: unknown): string {
   }
 }
 
-function buildPromptCallOptions(options?: PromptExecutionOptions): Record<string, unknown> {
+function buildPromptCallOptions(
+  options?: PromptExecutionOptions,
+  extraSignal?: AbortSignal,
+): Record<string, unknown> {
   const callOptions: Record<string, unknown> = {};
-  if (options?.signal) {
-    callOptions.signal = options.signal;
+  const signal = mergeAbortSignals(options?.signal, extraSignal);
+  if (signal) {
+    callOptions.signal = signal;
   }
   return callOptions;
+}
+
+function finishPromptLiveSession(liveSession: LlmLiveSession, error: unknown): void {
+  liveSession.finishWithError(error);
 }
 
 function estimateRenderedPromptChars(messages: BaseMessage[]): number {
@@ -884,10 +894,14 @@ export async function runTextPrompt<I>(input: {
       promptMeta: prepared.invocation,
     });
     liveSession.phase("streaming", "模型正在返回内容");
-    const stream = await llm.stream(messages, buildPromptCallOptions(input.options));
+    const callOptions = buildPromptCallOptions(input.options, liveSession.signal);
+    const stream = await llm.stream(messages, callOptions);
     let rawOutput = "";
     let tokenUsage: LlmTokenUsageSnapshot | null = null;
     for await (const chunk of stream) {
+      if (liveSession.isCancelled()) {
+        throw liveSession.signal?.reason ?? new Error("用户已中断本次模型请求");
+      }
       const content = toText(chunk.content);
       rawOutput += content;
       liveSession.delta(content);
@@ -921,7 +935,7 @@ export async function runTextPrompt<I>(input: {
       tokenUsage,
     });
   } catch (error) {
-    liveSession.fail(error);
+    finishPromptLiveSession(liveSession, error);
     recordPromptFailure({
       asset: input.asset as PromptAsset<unknown, unknown, unknown>,
       context: prepared.context,
@@ -984,10 +998,10 @@ export async function streamTextPrompt<I>(input: {
       promptMeta: prepared.invocation,
     });
     liveSession.phase("streaming", "模型正在返回内容");
-    const rawStream = await llm.stream(messages, buildPromptCallOptions(input.options));
+    const rawStream = await llm.stream(messages, buildPromptCallOptions(input.options, liveSession.signal));
     captured = captureStreamOutput(rawStream as AsyncIterable<BaseMessageChunk>, (content) => liveSession.delta(content));
   } catch (error) {
-    liveSession.fail(error);
+    finishPromptLiveSession(liveSession, error);
     recordPromptFailure({
       asset: input.asset as PromptAsset<unknown, unknown, unknown>,
       context: prepared.context,
@@ -1033,7 +1047,7 @@ export async function streamTextPrompt<I>(input: {
       liveSession.complete();
       return result;
     }).catch((error) => {
-      liveSession.fail(error);
+      finishPromptLiveSession(liveSession, error);
       recordPromptFailure({
         asset: input.asset as PromptAsset<unknown, unknown, unknown>,
         context: prepared.context,
@@ -1113,14 +1127,15 @@ export async function streamStructuredPrompt<I, O, R = O>(input: {
     if (responseFormat) {
       invokeOptions.response_format = responseFormat;
     }
-    if (input.options?.signal) {
-      invokeOptions.signal = input.options.signal;
+    const effectiveSignal = mergeAbortSignals(input.options?.signal, liveSession.signal);
+    if (effectiveSignal) {
+      invokeOptions.signal = effectiveSignal;
     }
     liveSession.phase("streaming", "模型正在返回结构化结果");
     const rawStream = await llm.stream(prepared.messages, invokeOptions);
     captured = captureStreamOutput(rawStream as AsyncIterable<BaseMessageChunk>, (content) => liveSession.delta(content));
   } catch (error) {
-    liveSession.fail(error);
+    finishPromptLiveSession(liveSession, error);
     recordPromptFailure({
       asset: input.asset as PromptAsset<unknown, unknown, unknown>,
       context: prepared.context,
@@ -1134,6 +1149,7 @@ export async function streamStructuredPrompt<I, O, R = O>(input: {
     throw error;
   }
 
+  const repairSignal = mergeAbortSignals(input.options?.signal, liveSession.signal);
   return {
     stream: captured.stream,
     complete: captured.completedText.then(async (rawContent) => {
@@ -1147,7 +1163,7 @@ export async function streamStructuredPrompt<I, O, R = O>(input: {
         temperature: input.options?.temperature,
         maxTokens: input.options?.maxTokens,
         timeoutMs: input.options?.timeoutMs,
-        signal: input.options?.signal,
+        signal: repairSignal,
         taskType: input.asset.taskType,
         label: `${input.asset.id}@${input.asset.version}`,
         maxRepairAttempts: resolveStructuredRepairAttempts(input.asset as PromptAsset<unknown, unknown, unknown>),
@@ -1169,7 +1185,9 @@ export async function streamStructuredPrompt<I, O, R = O>(input: {
         baseMessages: prepared.messages,
         outputSchema,
         initialResult: parsed,
-        options: input.options,
+        options: input.options
+          ? { ...input.options, signal: repairSignal }
+          : { signal: repairSignal },
       });
       const result = buildPromptRunResult({
         asset: input.asset as PromptAsset<unknown, unknown, unknown>,
@@ -1186,7 +1204,7 @@ export async function streamStructuredPrompt<I, O, R = O>(input: {
       liveSession.complete();
       return result;
     }).catch((error) => {
-      liveSession.fail(error);
+      finishPromptLiveSession(liveSession, error);
       recordPromptFailure({
         asset: input.asset as PromptAsset<unknown, unknown, unknown>,
         context: prepared.context,

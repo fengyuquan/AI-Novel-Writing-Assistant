@@ -13,7 +13,7 @@ import type { LLMProvider } from "@ai-novel/shared/types/llm";
 
 // ─── 状态 ─────────────────────────────────────────────────────────────────────
 
-export type GeneratedImageStatus = "idle" | "generating" | "done" | "error";
+export type GeneratedImageStatus = "idle" | "generating" | "awaiting_selection" | "done" | "error";
 
 export interface GeneratedImageHistoryItem {
   version: number;
@@ -46,6 +46,10 @@ export interface GeneratedImageState {
   history?: GeneratedImageHistoryItem[];
   /** 本次生图实际使用的参考素材（成功时才写） */
   referenceImages?: GeneratedReferenceImageMeta[];
+  /** 多图候选选择：保留以便改选 */
+  selectionId?: string;
+  candidates?: Array<{ index: number; url: string }>;
+  selectedIndex?: number;
 }
 
 // ─── Adapter 接口 ────────────────────────────────────────────────────────────
@@ -86,6 +90,8 @@ export interface ImageTargetAdapter<TState extends GeneratedImageState = Generat
 export interface RunImageGenerationOptions {
   /** LLM provider（缺省走调用方默认） */
   provider?: LLMProvider | string;
+  /** 显式图像模型；缺省时优先用全局 image.currentSelection，再回退厂商默认 */
+  model?: string;
   /** 已构建好的 prompt */
   prompt: string;
   negativePrompt?: string;
@@ -124,10 +130,14 @@ export interface ImageGenerationPreview {
   referenceImages: GeneratedReferenceImageMeta[];
   /** 默认 provider；用户可在弹窗里改 */
   provider: string;
+  /** 默认图像模型；用户可在弹窗里改 */
+  model?: string;
   /** 默认 size；用户可在弹窗里改 */
   size: ImageSize;
   /** 可选 provider 列表（前端下拉用，由调用方传入） */
   availableProviders?: Array<{ value: string; label: string }>;
+  /** 可选图像模型列表（前端下拉用） */
+  availableModels?: string[];
   /** 可选 size 列表（前端下拉用） */
   availableSizes?: ImageSize[];
 }
@@ -139,8 +149,49 @@ export interface ImageGenerationPreview {
 export interface ImageGenerationOverrides {
   promptOverride?: string;
   providerOverride?: string;
+  modelOverride?: string;
   sizeOverride?: ImageSize;
   negativePromptOverride?: string;
+  /** 生成张数；缺省 1。上游若仍返回多张，会进入候选选择。 */
+  countOverride?: number;
   /** 用户在确认弹窗中临时移除的参考素材 URL；本次生成不发送这些参考图 */
   excludedReferenceImageUrls?: string[];
+}
+
+/** 上游返回多张图时，要求前端选择其中一张再落盘 */
+export interface ImageSelectionRequired<TState extends GeneratedImageState = GeneratedImageState> {
+  __imageSelectionRequired: true;
+  selectionId: string;
+  candidates: Array<{ index: number; url: string }>;
+  state: TState;
+}
+
+export type RunImageGenerationResult<TState extends GeneratedImageState = GeneratedImageState> =
+  | TState
+  | ImageSelectionRequired<TState>;
+
+export function isImageSelectionRequired<TState extends GeneratedImageState>(
+  value: RunImageGenerationResult<TState>,
+): value is ImageSelectionRequired<TState> {
+  return Boolean(
+    value
+    && typeof value === "object"
+    && (value as ImageSelectionRequired).__imageSelectionRequired === true,
+  );
+}
+
+export function toImageSelectionResponsePayload<TState extends GeneratedImageState>(
+  value: ImageSelectionRequired<TState>,
+): Record<string, unknown> {
+  return {
+    status: "awaiting_selection",
+    selectionId: value.selectionId,
+    candidates: value.candidates,
+    selectedIndex: value.state.selectedIndex,
+    version: value.state.version,
+    prompt: value.state.prompt,
+    provider: value.state.provider,
+    generatedAt: value.state.generatedAt,
+    ...(value.state.referenceImages ? { referenceImages: value.state.referenceImages } : {}),
+  };
 }

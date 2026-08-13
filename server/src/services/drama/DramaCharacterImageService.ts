@@ -20,7 +20,7 @@ import { runImageGeneration, safeJsonParse, type ImageTargetAdapter } from "../i
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type CharacterImageStatus = "idle" | "generating" | "done" | "error";
+export type CharacterImageStatus = "idle" | "generating" | "awaiting_selection" | "done" | "error";
 
 export interface CharacterImageHistoryItem {
   version: number;
@@ -237,12 +237,14 @@ export class DramaCharacterImageService {
     characterId: string,
     provider = DEFAULT_PROVIDER,
     overrides?: import("../image/runtime").ImageGenerationOverrides,
-  ): Promise<CharacterSheetData> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult<CharacterSheetData>> {
     const ctx = await this.buildCharacterSheetGenerationContext(characterId);
     return runImageGeneration(ctx.adapter, {
       provider: overrides?.providerOverride ?? provider,
+      model: overrides?.modelOverride,
       prompt: overrides?.promptOverride ?? ctx.prompt,
       size: overrides?.sizeOverride ?? ctx.size,
+      count: overrides?.countOverride ?? 1,
       sceneType: "character",
       referenceImages: ctx.referenceImages.length > 0 ? ctx.referenceImages : undefined,
     });
@@ -282,7 +284,7 @@ export class DramaCharacterImageService {
   async generatePortrait(
     characterId: string,
     provider = DEFAULT_PROVIDER,
-  ): Promise<PortraitData> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult<CharacterSheetData>> {
     return this.generateCharacterSheet(characterId, provider);
   }
 

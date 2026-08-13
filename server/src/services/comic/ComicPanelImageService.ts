@@ -19,12 +19,13 @@ import {
 import { resolveAssetFile } from "./ComicCharacterAssetService";
 import { comicSpriteSheetService } from "./ComicSpriteSheetService";
 import { resolveSceneFile, type SceneBible } from "./ComicSceneService";
+import { applyComicTextToImageTaskLead, buildComicTextToImageTaskLead } from "./comicImageTaskPrompt";
 import { IMAGE_SIZES, type ImageSize } from "../image/types";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type PanelImageStatus = "idle" | "generating" | "done" | "error";
+export type PanelImageStatus = "idle" | "generating" | "awaiting_selection" | "done" | "error";
 
 /** 生图实际使用的参考素材元数据（写入 imageData.referenceImages，供前端弹窗溯源展示） */
 export interface PanelReferenceImageMeta {
@@ -44,6 +45,7 @@ export interface PanelImageData {
   provider?: string;
   generatedAt?: string;
   error?: string;
+  origin?: "generated" | "uploaded";
   /** 本次生图实际使用的参考素材（成功生成时写入；失败/未生图时不写） */
   referenceImages?: PanelReferenceImageMeta[];
 }
@@ -224,9 +226,10 @@ function buildPanelPrompt(
   // 4. 对话/气泡
   const dialoguePart = buildDialoguePrompt(dialogues);
 
-  // 顺序：形态 → 画风 → 角色外貌 → 场景锚定 → 对白气泡 → 场景内容 → 质量词
+  // 顺序：任务特征（纯文生图）→ 形态 → 画风 → 角色外貌 → 场景锚定 → 对白气泡 → 场景内容 → 质量词
   // 对白在画面内容之前，确保图像模型赋予更高权重
   const parts = [
+    buildComicTextToImageTaskLead("panel"),
     `${formatZh}，${formatEn}`,
     `${styleZh}，${styleEn}`,
   ];
@@ -234,7 +237,7 @@ function buildPanelPrompt(
   if (sceneDesc) parts.push(sceneDesc);
   // 场景参考图防机位僵死：只锁定空间身份，镜头按本格自由运镜
   if (hasSceneRefImage) {
-    parts.push("场景参考图仅用于锁定色调、布局与材质身份，镜头角度、景别与构图必须严格按本格画面内容自由运镜，不要照搬参考图的机位");
+    parts.push("场景参考仅作文字身份提示：锁定色调、布局与材质；镜头角度、景别与构图必须严格按本格画面内容自由运镜，不要照搬固定机位");
   }
   parts.push(CROWD_DIVERSITY_PROMPT);
   if (dialoguePart) parts.push(dialoguePart);
@@ -291,10 +294,12 @@ export class ComicPanelImageService {
         const ref = characterRefs.find((item) => item.name === character.name);
         if (!ref) continue;
 
-        // ── 文字描述锚定 ──────────────────────────────────────
+        // ── 文字描述锚定（文生图必须自包含，不能只写“按参考图”）────────
         const desc = character.visualAnchor?.trim()
           ? extractVisualAnchorDesc(character.visualAnchor)
-          : "以角色参考图保持外貌一致";
+          : (character.persona?.trim()
+            ? `气质与人设：${character.persona.trim()}`
+            : `保持角色「${character.name}」身份一致的稳定外貌`);
         const genderTag = character.gender === "male" ? "【男性】"
           : character.gender === "female" ? "【女性】"
           : character.gender === "other" ? "【中性气质】"
@@ -461,10 +466,11 @@ export class ComicPanelImageService {
   ): Promise<import("../image/runtime").ImageGenerationPreview> {
     const ctx = await this.buildPanelGenerationContext(panelId);
     try {
+      const hasRefs = ctx.referenceImages.length > 0;
       return {
         kind: ctx.adapter.kind,
         title: ctx.title,
-        prompt: ctx.prompt,
+        prompt: applyComicTextToImageTaskLead(ctx.prompt, "panel", hasRefs),
         referenceImages: ctx.referenceImages,
         provider,
         size: ctx.size,
@@ -478,7 +484,7 @@ export class ComicPanelImageService {
     panelId: string,
     provider: LLMProvider = DEFAULT_PROVIDER,
     overrides?: import("../image/runtime").ImageGenerationOverrides,
-  ): Promise<PanelImageData> {
+  ): Promise<import("../image/runtime").RunImageGenerationResult<PanelImageData>> {
     const ctx = await this.buildPanelGenerationContext(panelId);
     try {
       const refs = filterImageGenerationReferences({
@@ -486,16 +492,77 @@ export class ComicPanelImageService {
         referenceImages: ctx.referenceImages,
         excludedReferenceImageUrls: overrides?.excludedReferenceImageUrls,
       });
+      const hasRefs =
+        (refs.referenceImages?.length ?? 0) > 0
+        || (refs.refImagePaths?.length ?? 0) > 0;
+      const prompt = applyComicTextToImageTaskLead(
+        overrides?.promptOverride ?? ctx.prompt,
+        "panel",
+        hasRefs,
+      );
       return await runImageGeneration(ctx.adapter, {
         provider: overrides?.providerOverride ?? provider,
-        prompt: overrides?.promptOverride ?? ctx.prompt,
+        model: overrides?.modelOverride,
+        prompt,
         size: overrides?.sizeOverride ?? ctx.size,
+        count: overrides?.countOverride ?? 1,
         refImagePaths: refs.refImagePaths,
         referenceImages: refs.referenceImages && refs.referenceImages.length > 0 ? refs.referenceImages : undefined,
       });
     } finally {
       await ctx.cleanup();
     }
+  }
+
+  async uploadPanelImage(
+    panelId: string,
+    fileBuffer: Buffer,
+    mimeType: string,
+  ): Promise<PanelImageData> {
+    const panel = await prisma.comicPanel.findUnique({
+      where: { id: panelId },
+      select: { id: true, imageData: true },
+    });
+    if (!panel) throw new AppError(`未找到漫画格子：${panelId}`, 404);
+
+    const normalizedMime = mimeType.split(";")[0]?.trim().toLowerCase() || "image/png";
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(normalizedMime)) {
+      throw new AppError("仅支持 PNG / JPEG / WebP 图片。", 400);
+    }
+    if (fileBuffer.length === 0) throw new AppError("上传的图片为空。", 400);
+    if (fileBuffer.length > 20 * 1024 * 1024) throw new AppError("图片过大，请控制在 20MB 以内。", 400);
+
+    const current = safeJsonParse<PanelImageData>(panel.imageData, { status: "idle" });
+    if (current.status === "generating") {
+      throw new AppError("格子图正在生成中，请稍后再上传。", 409);
+    }
+
+    const nextVersion = current.status === "done"
+      ? Math.max(1, Number(current.version) > 0 ? Math.round(Number(current.version)) + 1 : 2)
+      : Math.max(1, Number(current.version) > 0 ? Math.round(Number(current.version)) : 1);
+    const ext = normalizedMime === "image/jpeg" || normalizedMime === "image/jpg"
+      ? "jpg"
+      : normalizedMime === "image/webp"
+        ? "webp"
+        : "png";
+    const dir = comicPanelDir(panelId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, `panel.${ext}`), fileBuffer);
+    await cleanOldPanelFiles(panelId, ext);
+
+    const next: PanelImageData = {
+      status: "done",
+      version: nextVersion,
+      url: panelImageUrl(panelId),
+      origin: "uploaded",
+      generatedAt: new Date().toISOString(),
+      ...(current.prompt ? { prompt: current.prompt } : {}),
+    };
+    await prisma.comicPanel.update({
+      where: { id: panelId },
+      data: { imageData: JSON.stringify(next) },
+    });
+    return next;
   }
 
   getPanelImageData(panelId: string): Promise<PanelImageData> {

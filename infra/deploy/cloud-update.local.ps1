@@ -135,23 +135,28 @@ function Copy-TreeFiltered {
 
 function Invoke-WorkspaceBuild {
   param(
-    [string]$Filter,
-    [string]$FallbackCommand
+    [string]$Filter
   )
   # Windows PowerShell 无法直接执行 package.json 里的 NODE_OPTIONS='...' bash 语法
   if (-not $env:NODE_OPTIONS) {
     $env:NODE_OPTIONS = "--max-old-space-size=4096"
   }
-  if ($Filter -eq "@ai-novel/server") {
-    pnpm --filter @ai-novel/server exec tsc -p tsconfig.json
-    return $LASTEXITCODE
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    # 必须把 pnpm 输出写到 Host，否则会混进函数返回值，导致 $code -ne 0 误判失败
+    if ($Filter -eq "@ai-novel/server") {
+      & pnpm --filter @ai-novel/server exec tsc -p tsconfig.json 2>&1 | ForEach-Object { Write-Host $_ }
+    } elseif ($Filter -eq "@ai-novel/client" -or $Filter -eq "client") {
+      & pnpm --filter @ai-novel/client build 2>&1 | ForEach-Object { Write-Host $_ }
+    } else {
+      & pnpm --filter $Filter build 2>&1 | ForEach-Object { Write-Host $_ }
+    }
+    if ($null -eq $LASTEXITCODE) { return 0 }
+    return [int]$LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $prev
   }
-  if ($Filter -eq "@ai-novel/client" -or $Filter -eq "client") {
-    pnpm --filter @ai-novel/client build
-    return $LASTEXITCODE
-  }
-  pnpm --filter $Filter build
-  return $LASTEXITCODE
 }
 
 function Write-NextStepCommands {
@@ -176,41 +181,30 @@ function Write-NextStepCommands {
   if ($NoCache) { $remotePackageArg += " --no-cache" }
 
   Write-Host ""
-  Write-Host "========== 下一步：本机上传（PowerShell） ==========" -ForegroundColor Cyan
-  Write-Host "请使用 scp.exe / ssh.exe（不要用 cp，PowerShell 会当成 Copy-Item）。"
+  Write-Host "========== 下一步：本机上传（PowerShell，可整行复制） ==========" -ForegroundColor Cyan
+  Write-Host "请使用 scp.exe / ssh.exe（不要用 cp）。"
   Write-Host ""
-  Write-Host "scp.exe -P $SshPort ``"
-  Write-Host "  `"$TarPath`" ``"
-  Write-Host "  ${sshTarget}:${remoteIncoming}/"
-  Write-Host ""
-  Write-Host "scp.exe -P $SshPort ``"
-  Write-Host "  `"$localRemoteSh`" ``"
-  Write-Host "  ${sshTarget}:${RemotePath}/infra/deploy/cloud-update.remote.sh"
+  Write-Host ("scp.exe -P {0} `"{1}`" {2}:{3}/" -f $SshPort, $TarPath, $sshTarget, $remoteIncoming)
+  Write-Host ("scp.exe -P {0} `"{1}`" {2}:{3}/infra/deploy/cloud-update.remote.sh" -f $SshPort, $localRemoteSh, $sshTarget, $RemotePath)
   if (Test-Path $localCloudEnv) {
-    Write-Host ""
     Write-Host "# 若本次改了 API_JSON_LIMIT 等云端环境变量，再传："
-    Write-Host "scp.exe -P $SshPort ``"
-    Write-Host "  `"$localCloudEnv`" ``"
-    Write-Host "  ${sshTarget}:${RemotePath}/infra/deploy/cloud.env"
+    Write-Host ("scp.exe -P {0} `"{1}`" {2}:{3}/infra/deploy/cloud.env" -f $SshPort, $localCloudEnv, $sshTarget, $RemotePath)
   }
 
   Write-Host ""
   Write-Host "========== 下一步：登录云主机 ==========" -ForegroundColor Cyan
-  Write-Host "ssh.exe -p $SshPort $sshTarget"
+  Write-Host ("ssh.exe -p {0} {1}" -f $SshPort, $sshTarget)
 
   Write-Host ""
-  Write-Host "========== 下一步：云主机执行 ==========" -ForegroundColor Cyan
-  Write-Host "cd $RemotePath"
-  Write-Host "chmod +x infra/deploy/cloud-update.remote.sh"
-  Write-Host "bash infra/deploy/cloud-update.remote.sh $remotePackageArg"
+  Write-Host "========== 下一步：云主机执行（可整行复制） ==========" -ForegroundColor Cyan
+  Write-Host ("cd {0} && chmod +x infra/deploy/cloud-update.remote.sh && bash infra/deploy/cloud-update.remote.sh {1}" -f $RemotePath, $remotePackageArg)
   if ($NeedApi -and (Test-Path $localCloudEnv)) {
-    Write-Host ""
     Write-Host "# 若刚更新了 cloud.env，再让 API 重新读环境变量："
-    Write-Host "bash infra/deploy/cloud-update.remote.sh --server"
+    Write-Host ("cd {0} && bash infra/deploy/cloud-update.remote.sh --server" -f $RemotePath)
   }
 
   Write-Host ""
-  Write-Host "========== 验收 ==========" -ForegroundColor Cyan
+  Write-Host "========== 验收（可整行复制） ==========" -ForegroundColor Cyan
   Write-Host "docker ps --filter name=ai-novel-"
   Write-Host "docker logs ai-novel-api --tail 50"
   Write-Host "curl -sS -u '用户名:密码' http://127.0.0.1:5173/api/health"

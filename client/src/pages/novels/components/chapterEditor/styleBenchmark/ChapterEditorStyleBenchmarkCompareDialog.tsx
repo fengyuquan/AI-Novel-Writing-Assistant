@@ -22,6 +22,8 @@ import {
 } from "./styleBenchmarkParagraphs";
 import {
   formatBenchmarkModelLabel,
+  loadStyleBenchmarkPrefs,
+  patchStyleBenchmarkPrefs,
   type StyleBenchmarkLayoutColumns,
 } from "./styleBenchmarkStorage";
 import {
@@ -39,6 +41,13 @@ import {
   isCompactCompareDesk,
   useStyleBenchmarkCompareDeskMode,
 } from "./useStyleBenchmarkCompareDeskMode";
+import { StyleBenchmarkCompareStatusBar } from "./StyleBenchmarkCompareStatusBar";
+import {
+  StyleBenchmarkCompareAlignTip,
+  StyleBenchmarkCompareGuideBanner,
+  StyleBenchmarkCompareWeakTip,
+} from "./StyleBenchmarkCompareUxHints";
+import { countEditorWords } from "../chapterEditorUtils";
 
 function winnerLabel(winner: "user" | "benchmark" | "tie"): string {
   if (winner === "user") {
@@ -50,12 +59,10 @@ function winnerLabel(winner: "user" | "benchmark" | "tie"): string {
   return "打平";
 }
 
+/** 按钮上只显示范文名；模型放进 title，降低新手认知负担。 */
 function shortTabLabel(result: ChapterEditorStyleBenchmarkRewriteResponse): string {
   const title = result.reference.title?.trim() || "未命名范文";
-  const shortTitle = title.length > 10 ? `${title.slice(0, 10)}…` : title;
-  const model = formatBenchmarkModelLabel(result);
-  const shortModel = model.length > 14 ? `${model.slice(0, 14)}…` : model;
-  return `${shortTitle} · ${shortModel}`;
+  return title.length > 12 ? `${title.slice(0, 12)}…` : title;
 }
 
 function shortVersionLabel(result: ChapterEditorStyleBenchmarkRewriteResponse): string {
@@ -84,6 +91,9 @@ interface ChapterEditorStyleBenchmarkCompareDialogProps {
   onToggleBenchmarkVisible: (sessionId: string) => void;
   onRemoveBenchmark: (sessionId: string) => void;
   onLayoutColumnsChange: (columns: StyleBenchmarkLayoutColumns) => void;
+  contentSaveStatus: "idle" | "saving" | "saved" | "error";
+  isDirtyContent: boolean;
+  isSavingContent: boolean;
 }
 
 export default function ChapterEditorStyleBenchmarkCompareDialog(
@@ -109,6 +119,9 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
     onToggleBenchmarkVisible,
     onRemoveBenchmark,
     onLayoutColumnsChange,
+    contentSaveStatus,
+    isDirtyContent,
+    isSavingContent,
   } = props;
 
   const deskMode = useStyleBenchmarkCompareDeskMode();
@@ -119,10 +132,13 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
   const [locateToken, setLocateToken] = useState(0);
   const [browserFullscreen, setBrowserFullscreen] = useState(false);
+  const [showGuide, setShowGuide] = useState(() => !loadStyleBenchmarkPrefs().hideCompareGuide);
+  const [showAlignTip, setShowAlignTip] = useState(() => !loadStyleBenchmarkPrefs().hideAlignTip);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const dialogSurfaceRef = useRef<HTMLDivElement | null>(null);
   const mobileColumnsAdjustedRef = useRef(false);
+  const skipSoftScrollRef = useRef(false);
 
   const displayBenchmarks = useMemo(() => {
     if (deskMode === "desktop") {
@@ -132,6 +148,7 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
   }, [deskMode, visibleBenchmarks]);
 
   const userParagraphs = useMemo(() => splitBenchmarkParagraphs(userContent), [userContent]);
+  const userWordCount = useMemo(() => countEditorWords(userContent), [userContent]);
   const visibleParagraphSets = useMemo(
     () => displayBenchmarks.map((item) => ({
       sessionId: item.sessionId,
@@ -174,6 +191,78 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
     }
     return `弱段 ${weakRowIndexes.size} / ${Math.max(1, focusedCompareResult.segments.length)}`;
   }, [focusedCompareResult, weakRowIndexes.size]);
+
+  const focusedBenchmarkParagraphCount = useMemo(() => {
+    if (!focusedBenchmark) {
+      return null;
+    }
+    return splitBenchmarkParagraphs(focusedBenchmark.benchmarkContent).length;
+  }, [focusedBenchmark]);
+
+  const paragraphsMisaligned = Boolean(
+    focusedBenchmark
+    && focusedBenchmarkParagraphCount !== null
+    && userParagraphs.length !== focusedBenchmarkParagraphCount,
+  );
+
+  const selectedWeakTip = useMemo(() => {
+    if (!focusedCompareResult || !weakRowIndexes.has(selectedRowIndex)) {
+      return null;
+    }
+    for (const segment of focusedCompareResult.segments) {
+      if (segment.winner !== "benchmark") {
+        continue;
+      }
+      const index = findParagraphIndexByEvidence(userParagraphs, segment.userExcerpt);
+      if (index !== selectedRowIndex) {
+        continue;
+      }
+      const tip = segment.howToImproveWeaker?.trim() || segment.whyBetter?.trim();
+      return tip || "这一段相对范文偏弱，可对照右侧改你的正文。";
+    }
+    return "这一段相对范文偏弱，可对照右侧改你的正文。";
+  }, [focusedCompareResult, selectedRowIndex, userParagraphs, weakRowIndexes]);
+
+  const learningFocus = useMemo(() => {
+    const lines = focusedBenchmark?.essence?.fingerprintLines
+      ?.map((line) => line.trim())
+      .filter(Boolean) ?? [];
+    if (lines.length === 0) {
+      return null;
+    }
+    const joined = lines.slice(0, 2).join("；");
+    return joined.length > 48 ? `${joined.slice(0, 48)}…` : joined;
+  }, [focusedBenchmark]);
+
+  const footerNextStepLabel = useMemo(() => {
+    if (!focusedCompareResult) {
+      return compactChrome
+        ? `当前第 ${selectedRowIndex + 1} 段${focusedBenchmark ? ` · 主范文「${shortVersionLabel(focusedBenchmark)}」` : ""}`
+        : "左右按第 N 段对齐；错位时用「空出本段 / 并入上段」。字数与保存状态见上方状态条。";
+    }
+    if (weakRowIndexes.size > 0) {
+      return compactChrome
+        ? `还有 ${weakRowIndexes.size} 个弱段可改 · 当前第 ${selectedRowIndex + 1} 段`
+        : `还有 ${weakRowIndexes.size} 个弱段：可点「下一段弱段」继续对照修改。`;
+    }
+    return compactChrome
+      ? "本轮弱段已看完，可关闭继续写"
+      : "本轮弱段已看完。可关闭对照窗，回到正文继续改，或换一篇范文再学。";
+  }, [
+    compactChrome,
+    focusedBenchmark,
+    focusedCompareResult,
+    selectedRowIndex,
+    weakRowIndexes.size,
+  ]);
+
+  const collapseChromeForEditing = () => {
+    if (!compactChrome) {
+      return;
+    }
+    setHeaderExpanded(false);
+    setFooterExpanded(false);
+  };
 
   useEffect(() => {
     if (!open) {
@@ -254,6 +343,7 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
     if (locateToken <= 0) {
       return;
     }
+    skipSoftScrollRef.current = true;
     const root = scrollRootRef.current;
     const el = rowRefs.current[selectedRowIndex];
     if (!root || !el || selectedRowIndex < 0) {
@@ -265,6 +355,29 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
     root.scrollTop += offset;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- locate-only scroll
   }, [locateToken]);
+
+  // 点选/聚焦某段时，若被键盘或底栏挡住，轻滚到可视区。
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (skipSoftScrollRef.current) {
+      skipSoftScrollRef.current = false;
+      return;
+    }
+    const root = scrollRootRef.current;
+    const el = rowRefs.current[selectedRowIndex];
+    if (!root || !el || selectedRowIndex < 0) {
+      return;
+    }
+    const rootRect = root.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const padding = 12;
+    if (elRect.top >= rootRect.top + padding && elRect.bottom <= rootRect.bottom - padding) {
+      return;
+    }
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [open, selectedRowIndex]);
 
   useEffect(() => {
     if (!open) {
@@ -327,10 +440,31 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
+      if (isSavingContent) {
+        const confirmed = window.confirm("正文还在保存中，现在关闭可能来不及写完。仍要关闭吗？");
+        if (!confirmed) {
+          return;
+        }
+      } else if (contentSaveStatus === "error" && isDirtyContent) {
+        const confirmed = window.confirm("正文保存失败，关闭后刚改的内容可能还没落库。仍要关闭吗？");
+        if (!confirmed) {
+          return;
+        }
+      }
       void exitBrowserFullscreen();
       setBrowserFullscreen(false);
     }
     onOpenChange(next);
+  };
+
+  const dismissGuide = () => {
+    setShowGuide(false);
+    patchStyleBenchmarkPrefs({ hideCompareGuide: true });
+  };
+
+  const dismissAlignTip = () => {
+    setShowAlignTip(false);
+    patchStyleBenchmarkPrefs({ hideAlignTip: true });
   };
 
   const requestHideBrowserChrome = async () => {
@@ -475,6 +609,34 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
           </DialogHeader>
         ) : null}
 
+        <StyleBenchmarkCompareStatusBar
+          userWordCount={userWordCount}
+          isDirtyContent={isDirtyContent}
+          isSavingContent={isSavingContent}
+          contentSaveStatus={contentSaveStatus}
+          learningFocus={learningFocus}
+          compact={compactChrome}
+        />
+
+        {showGuide ? (
+          <StyleBenchmarkCompareGuideBanner
+            hasCompareResult={Boolean(focusedCompareResult)}
+            onDismiss={dismissGuide}
+          />
+        ) : null}
+
+        {showAlignTip && paragraphsMisaligned && focusedBenchmarkParagraphCount !== null ? (
+          <StyleBenchmarkCompareAlignTip
+            userParagraphCount={userParagraphs.length}
+            benchmarkParagraphCount={focusedBenchmarkParagraphCount}
+            onDismiss={dismissAlignTip}
+          />
+        ) : null}
+
+        {selectedWeakTip ? (
+          <StyleBenchmarkCompareWeakTip tip={selectedWeakTip} />
+        ) : null}
+
         <div className={cn(
           "flex min-h-0 flex-1 overflow-hidden",
           deskMode === "short-landscape" ? "flex-row gap-2 px-2 py-2" : "flex-col px-3 py-3 sm:px-4",
@@ -551,11 +713,13 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
                   key={`row-${rowIndex}`}
                   rowIndex={rowIndex}
                   active={rowIndex === selectedRowIndex}
+                  isWeak={weakRowIndexes.has(rowIndex)}
                   deskMode={deskMode}
                   columnTemplate={columnTemplate}
                   userParagraphs={userParagraphs}
                   visibleParagraphSets={visibleParagraphSets}
                   onSelectRow={() => setSelectedRowIndex(rowIndex)}
+                  onEditFocus={collapseChromeForEditing}
                   onUserContentChange={applyUserParagraphs}
                   onBenchmarkContentChange={applyBenchmarkParagraphs}
                   onFocusBenchmark={onFocusBenchmark}
@@ -623,12 +787,10 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
         {(!compactChrome || footerExpanded) ? (
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-4 py-3 sm:px-6">
             <div className="min-w-0 text-xs leading-5 text-muted-foreground">
-              {compactChrome
-                ? `当前第 ${selectedRowIndex + 1} 段${focusedBenchmark ? ` · 主范文「${shortVersionLabel(focusedBenchmark)}」` : ""}`
-                : "左右按第 N 段对齐；错位时用「空出本段 / 并入上段」。改范文写回本章缓存，改你的正文同步到编辑器草稿。"}
+              {footerNextStepLabel}
             </div>
             <div className="flex flex-wrap gap-2">
-              {weakRowIndexes.size > 0 && compactChrome ? (
+              {weakRowIndexes.size > 0 ? (
                 <Button size="sm" variant="outline" onClick={jumpToNextWeak}>
                   下一段弱段
                 </Button>
@@ -645,8 +807,8 @@ export default function ChapterEditorStyleBenchmarkCompareDialog(
                     ? "重新点评"
                     : "AI 点评"}
               </AiButton>
-              <Button size="sm" variant="secondary" onClick={() => onOpenChange(false)}>
-                关闭
+              <Button size="sm" variant="secondary" onClick={() => handleOpenChange(false)}>
+                {focusedCompareResult && weakRowIndexes.size === 0 ? "完成对照" : "关闭"}
               </Button>
             </div>
           </div>

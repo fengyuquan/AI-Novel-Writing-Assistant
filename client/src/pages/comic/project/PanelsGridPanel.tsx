@@ -5,6 +5,7 @@ import {
   FileText,
   Image as ImageIcon,
   ImageOff,
+  Images,
   LayoutGrid,
   Loader2,
   Pencil,
@@ -23,6 +24,7 @@ import {
   listComicPanels,
   panelImageUrl,
   preparePanelImage,
+  uploadPanelImage,
   retryBatchJob,
   startEpisodeBatch,
   updatePanelVisualPrompt,
@@ -31,7 +33,9 @@ import {
   type ComicDialogue,
   type ComicPanel,
 } from "@/api/comic";
+import { getCachedImageSelection } from "@/api/imageRuntime";
 import { AppDialogContent, Dialog } from "@/components/ui/dialog";
+import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
 import { Button } from "@/components/ui/button";
@@ -42,9 +46,13 @@ function parseImageData(
 ): {
   status?: string;
   url?: string;
+  version?: number;
   prompt?: string;
   provider?: string;
   generatedAt?: string;
+  selectionId?: string;
+  selectedIndex?: number;
+  candidates?: Array<{ index: number; url: string }>;
   referenceImages?: Array<{ kind: string; label: string; url: string }>;
 } {
   if (!raw) return {};
@@ -53,6 +61,14 @@ function parseImageData(
   } catch {
     return {};
   }
+}
+
+function panelImageSrc(panelId: string, imageData: { version?: number; generatedAt?: string }): string {
+  return panelImageUrl(panelId, imageData.version ?? imageData.generatedAt ?? undefined);
+}
+
+function panelCachedSelection(imageData: ReturnType<typeof parseImageData>) {
+  return getCachedImageSelection(imageData);
 }
 
 const REF_KIND_LABEL: Record<string, string> = {
@@ -257,11 +273,13 @@ function StripView({
   busyPanelId,
   onSelect,
   onGenerate,
+  onReselect,
 }: {
   panels: ComicPanel[];
   busyPanelId: string;
   onSelect: (panel: ComicPanel) => void;
   onGenerate: (panelId: string) => void;
+  onReselect: (panel: ComicPanel) => void;
 }) {
   return (
     <div className="flex flex-col gap-0">
@@ -270,6 +288,7 @@ function StripView({
         const dialogues = parseDialogues(panel.dialogues);
         const imageStale = isPanelImageStale(panel, imageData);
         const busy = busyPanelId === panel.id;
+        const cachedSelection = panelCachedSelection(imageData);
 
         return (
           <div key={panel.id} className="group relative border-b last:border-b-0">
@@ -277,7 +296,7 @@ function StripView({
               {imageData.status === "done" ? (
                 <>
                   <img
-                    src={panelImageUrl(panel.id)}
+                    src={panelImageSrc(panel.id, imageData)}
                     alt={`第 ${panel.order} 格`}
                     className="w-full object-cover"
                     loading={idx < 3 ? "eager" : "lazy"}
@@ -302,6 +321,10 @@ function StripView({
                 <div className="flex h-40 items-center justify-center bg-muted">
                   {busy || imageData.status === "generating" ? (
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  ) : imageData.status === "awaiting_selection" ? (
+                    <div className="px-3 text-center text-[11px] text-amber-700 dark:text-amber-300">
+                      有多张结果待选择
+                    </div>
                   ) : (
                     <ImageOff className="h-8 w-8 text-muted-foreground/40" />
                   )}
@@ -314,6 +337,19 @@ function StripView({
               <span className="opacity-60">{panel.panelType}</span>
               {panel.focus && <span className="flex-1 truncate">{panel.focus}</span>}
               <div className="ml-auto flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                {cachedSelection ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[11px]"
+                    disabled={busy}
+                    onClick={() => onReselect(panel)}
+                  >
+                    <Images className="h-3 w-3" />
+                    改选
+                  </Button>
+                ) : null}
                 {imageData.status !== "done" ? (
                   <Button
                     type="button"
@@ -361,12 +397,14 @@ function PanelDetailDialog({
   busy,
   onClose,
   onGenerate,
+  onReselect,
   onSaved,
 }: {
   panel: ComicPanel;
   busy: boolean;
   onClose: () => void;
   onGenerate: (panelId: string) => void;
+  onReselect: (panel: ComicPanel) => void;
   onSaved: (panel: ComicPanel) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -375,6 +413,7 @@ function PanelDetailDialog({
   const density = densityBadge(panel.densityLevel);
   const layoutData = parseLayoutData(panel.layoutData);
   const imageStale = isPanelImageStale(panel, imageData);
+  const cachedSelection = panelCachedSelection(imageData);
 
   useEffect(() => {
     setDraftVisualPrompt(panel.visualPrompt);
@@ -416,7 +455,7 @@ function PanelDetailDialog({
             {imageData.status === "done" ? (
               <div className="relative">
                 <img
-                  src={panelImageUrl(panel.id)}
+                  src={panelImageSrc(panel.id, imageData)}
                   alt={`第 ${panel.order} 格`}
                   className="mx-auto max-h-72 w-full rounded-md object-contain lg:max-h-none"
                 />
@@ -453,6 +492,22 @@ function PanelDetailDialog({
                 </>
               )}
             </Button>
+            {cachedSelection ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2 w-full"
+                disabled={busy || savePromptMut.isPending}
+                onClick={() => {
+                  onReselect(panel);
+                  onClose();
+                }}
+              >
+                <Images className="h-3 w-3" />
+                改选候选图
+              </Button>
+            ) : null}
             {imageStale && (
               <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs leading-relaxed text-amber-800">
                 画面脚本已在上次生图后修改，重抽后图片才会使用新的脚本。
@@ -654,6 +709,14 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
     enabled: Boolean(activeEpisode),
   });
 
+  useEffect(() => {
+    if (!selectedPanel) return;
+    const fresh = panels.find((panel) => panel.id === selectedPanel.id);
+    if (fresh && fresh !== selectedPanel) {
+      setSelectedPanel(fresh);
+    }
+  }, [panels, selectedPanel]);
+
   const startPanelGeneration = (panelId: string) => {
     imageFlow.start({
       prepare: () => preparePanelImage(panelId, provider || undefined),
@@ -663,13 +726,42 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
           return await generatePanelImage(panelId, provider || undefined, overrides);
         } finally {
           setBusyPanelId("");
+          // 多图待选或失败后，立刻刷新格子状态，避免继续显示旧图
+          void queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
+        }
+      },
+      upload: async (file) => {
+        setBusyPanelId(panelId);
+        try {
+          return await uploadPanelImage(panelId, file);
+        } finally {
+          setBusyPanelId("");
         }
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
+        void queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
       },
       onError: () => {
-        queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
+        void queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
+      },
+    });
+  };
+
+  const startPanelReselection = (panel: ComicPanel) => {
+    const cached = panelCachedSelection(parseImageData(panel.imageData));
+    if (!cached) {
+      toast.error("没有可改选的候选图，请重新生成");
+      return;
+    }
+    imageFlow.reopenSelection({
+      selectionId: cached.selectionId,
+      candidates: cached.candidates,
+      selectedIndex: cached.selectedIndex,
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
+      },
+      onError: () => {
+        void queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
       },
     });
   };
@@ -683,6 +775,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
   return (
     <div className="space-y-4">
       <ImageGenerationConfirmDialog {...imageFlow.dialogProps} />
+      <ImageCandidateSelectionDialog {...imageFlow.selectionDialogProps} />
       {episodes.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex flex-1 flex-wrap gap-1.5">
@@ -742,6 +835,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
           busy={busyPanelId === selectedPanel.id}
           onClose={() => setSelectedPanel(null)}
           onGenerate={startPanelGeneration}
+          onReselect={startPanelReselection}
           onSaved={(panel) => {
             setSelectedPanel(panel);
             queryClient.invalidateQueries({ queryKey: ["comic", "panels", activeEpisode?.id] });
@@ -756,6 +850,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
             busyPanelId={busyPanelId}
             onSelect={setSelectedPanel}
             onGenerate={startPanelGeneration}
+            onReselect={startPanelReselection}
           />
         </div>
       ) : (
@@ -765,6 +860,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
             const density = densityBadge(panel.densityLevel);
             const imageStale = isPanelImageStale(panel, imageData);
             const busy = busyPanelId === panel.id;
+            const cachedSelection = panelCachedSelection(imageData);
             return (
               <div
                 key={panel.id}
@@ -777,7 +873,7 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
                 {imageData.status === "done" ? (
                   <div className="relative">
                     <img
-                      src={panelImageUrl(panel.id)}
+                      src={panelImageSrc(panel.id, imageData)}
                       alt={`第 ${panel.order} 格`}
                       className="aspect-[2/3] w-full object-cover"
                       loading="lazy"
@@ -792,6 +888,10 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
                   <div className="flex aspect-[2/3] items-center justify-center bg-muted">
                     {busy || imageData.status === "generating" ? (
                       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    ) : imageData.status === "awaiting_selection" ? (
+                      <div className="px-2 text-center text-[11px] text-amber-700 dark:text-amber-300">
+                        有多张结果待选择
+                      </div>
                     ) : (
                       <ImageOff className="h-8 w-8 text-muted-foreground/40" />
                     )}
@@ -808,6 +908,22 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
                   </div>
                 </div>
                 <div className="absolute inset-x-0 bottom-8 flex justify-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                  {cachedSelection ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      disabled={busy}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        startPanelReselection(panel);
+                      }}
+                    >
+                      <Images className="h-3 w-3" />
+                      改选
+                    </Button>
+                  ) : null}
                   {imageData.status !== "done" && (
                     <Button
                       type="button"

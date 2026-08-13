@@ -66,6 +66,13 @@ export type LlmLiveEvent =
     at: string;
     interactionId: string;
     message: string;
+  }
+  | {
+    type: "session_cancelled";
+    seq: number;
+    at: string;
+    interactionId: string;
+    message: string;
   };
 
 export interface LlmLiveSessionSnapshot {

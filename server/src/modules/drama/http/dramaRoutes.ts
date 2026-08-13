@@ -23,8 +23,26 @@ import { rhythmEngine } from "../../../services/drama/engine/rhythmEngine";
 import { dramaBatchOrchestrator } from "../../../services/drama/production/DramaBatchOrchestrator";
 import { dramaShotKeyframeService } from "../../../services/drama/visual/DramaShotKeyframeService";
 import { videoProviderRegistry } from "../../../services/drama/video/VideoProviderPort";
+import {
+  isImageSelectionRequired,
+  toImageSelectionResponsePayload,
+} from "../../../services/image/runtime";
+import dramaPromptPackRoutes from "./dramaPromptPackRoutes";
 
 const router = Router();
+router.use(dramaPromptPackRoutes);
+
+function respondImageGenerationResult(res: import("express").Response, data: unknown, message: string): void {
+  if (isImageSelectionRequired(data as never)) {
+    res.status(200).json({
+      success: true,
+      data: toImageSelectionResponsePayload(data as never),
+      message,
+    } satisfies ApiResponse<Record<string, unknown>>);
+    return;
+  }
+  res.status(200).json({ success: true, data, message });
+}
 
 const llmOptionsSchema = z
   .object({
@@ -40,8 +58,10 @@ const imageProviderBodySchema = z
     useCharacterRefImages: z.boolean().optional(),
     promptOverride: z.string().trim().max(4000).optional(),
     providerOverride: z.string().trim().optional(),
+    modelOverride: z.string().trim().max(200).optional(),
     sizeOverride: z.string().trim().max(20).optional(),
     negativePromptOverride: z.string().trim().max(2000).optional(),
+    countOverride: z.number().int().min(1).max(8).optional(),
     excludedReferenceImageUrls: z.array(z.string().trim().min(1).max(1000)).max(24).optional(),
   })
   .optional();
@@ -393,7 +413,12 @@ router.post("/projects/:id/episodes/:order/repair", validate({ params: episodePa
 router.get("/projects/:id/export", validate({ params: idParamsSchema }), async (req, res, next) => {
   try {
     const { id } = req.params as z.infer<typeof idParamsSchema>;
-    const format = req.query.format === "json" ? "json" : "markdown";
+    const rawFormat = typeof req.query.format === "string" ? req.query.format : "markdown";
+    const format = rawFormat === "json"
+      || rawFormat === "prompt-pack"
+      || rawFormat === "prompt-pack-captioned"
+      ? rawFormat
+      : "markdown";
     const data = await dramaExportService.exportProject(id, format);
     res.setHeader("Content-Type", data.contentType);
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(data.filename)}"`);
@@ -491,8 +516,10 @@ router.post("/projects/:id/shots/:shotId/keyframe", validate({ params: shotParam
       useCharacterRefImages?: boolean;
       promptOverride?: string;
       providerOverride?: string;
+      modelOverride?: string;
       sizeOverride?: string;
       negativePromptOverride?: string;
+      countOverride?: number;
       excludedReferenceImageUrls?: string[];
     } | undefined;
     const data = await dramaShotKeyframeService.generateKeyframe(
@@ -502,12 +529,14 @@ router.post("/projects/:id/shots/:shotId/keyframe", validate({ params: shotParam
       {
         promptOverride: body?.promptOverride,
         providerOverride: body?.providerOverride,
+        modelOverride: body?.modelOverride,
         sizeOverride: body?.sizeOverride as never,
         negativePromptOverride: body?.negativePromptOverride,
+        countOverride: body?.countOverride,
         excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
       },
     );
-    res.status(200).json({ success: true, data, message: "Drama shot keyframe generated." });
+    respondImageGenerationResult(res, data, "Drama shot keyframe generated.");
   } catch (error) {
     next(error);
   }
@@ -592,8 +621,10 @@ router.post(
         provider?: string;
         promptOverride?: string;
         providerOverride?: string;
+        modelOverride?: string;
         sizeOverride?: string;
         negativePromptOverride?: string;
+        countOverride?: number;
         excludedReferenceImageUrls?: string[];
       } | undefined;
       const data = await dramaCharacterImageService.generateCharacterSheet(
@@ -602,12 +633,14 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
           negativePromptOverride: body?.negativePromptOverride,
+          countOverride: body?.countOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
         },
       );
-      res.status(200).json({ success: true, data, message: "Character sheet generation completed." });
+      respondImageGenerationResult(res, data, "Character sheet generation completed.");
     } catch (error) {
       next(error);
     }
@@ -625,8 +658,10 @@ router.post(
         provider?: string;
         promptOverride?: string;
         providerOverride?: string;
+        modelOverride?: string;
         sizeOverride?: string;
         negativePromptOverride?: string;
+        countOverride?: number;
         excludedReferenceImageUrls?: string[];
       } | undefined;
       const data = await dramaCharacterImageService.generateCharacterSheet(
@@ -635,12 +670,14 @@ router.post(
         {
           promptOverride: body?.promptOverride,
           providerOverride: body?.providerOverride,
+          modelOverride: body?.modelOverride,
           sizeOverride: body?.sizeOverride as never,
           negativePromptOverride: body?.negativePromptOverride,
+          countOverride: body?.countOverride,
           excludedReferenceImageUrls: body?.excludedReferenceImageUrls,
         },
       );
-      res.status(200).json({ success: true, data, message: "Portrait generation completed." });
+      respondImageGenerationResult(res, data, "Portrait generation completed.");
     } catch (error) {
       next(error);
     }

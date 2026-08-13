@@ -243,7 +243,28 @@ export interface DramaTTSProvider {
   currency?: string;
 }
 
-export type DramaBatchJobType = "keyframes" | "videos" | "tts";
+export type DramaBatchJobType = "keyframes" | "videos" | "tts" | "prompt_pack";
+
+export type DramaPromptPackStage =
+  | "assemble"
+  | "strategy"
+  | "outline"
+  | "script"
+  | "storyboard"
+  | "export"
+  | "done";
+
+export interface DramaPromptPackProgress {
+  stage: DramaPromptPackStage;
+  totalEpisodes: number;
+  doneEpisodes: number;
+  skippedEpisodes: number;
+  failedEpisodeOrders: number[];
+  currentEpisodeOrder?: number;
+  errors: Array<{ stage: DramaPromptPackStage; episodeOrder?: number; message: string }>;
+  mode: "slideshow";
+  exportReady: boolean;
+}
 
 export interface DramaBatchProgress {
   total: number;
@@ -347,7 +368,7 @@ export async function assembleDramaSourceBundle(id: string) {
   return data;
 }
 
-export async function recommendDramaTrack(payload: {
+export async function recommendDramaTrack(payload: DramaLLMOptions & {
   title: string;
   sourceType: DramaSourceType;
   sourceDigest?: string;
@@ -547,12 +568,38 @@ export async function estimateDramaEpisodeBatchJob(id: string, order: number, pa
   return data;
 }
 
-export async function downloadDramaExport(id: string, format: "markdown" | "json") {
+export async function downloadDramaExport(
+  id: string,
+  format: "markdown" | "json" | "prompt-pack" | "prompt-pack-captioned",
+) {
   const response = await apiClient.get<Blob>(`/drama/projects/${id}/export`, {
     params: { format },
     responseType: "blob",
   });
   return response.data;
+}
+
+export async function startDramaPromptPackPipeline(id: string, payload: DramaLLMOptions = {}) {
+  const { data } = await apiClient.post<ApiResponse<DramaBatchJob>>(
+    `/drama/projects/${id}/pipelines/prompt-pack`,
+    payload,
+  );
+  return data;
+}
+
+export async function getLatestDramaPromptPackJob(id: string) {
+  const { data } = await apiClient.get<ApiResponse<DramaBatchJob | null>>(
+    `/drama/projects/${id}/pipelines/prompt-pack/latest`,
+  );
+  return data;
+}
+
+export async function retryFailedDramaPromptPackPipeline(id: string, payload: DramaLLMOptions = {}) {
+  const { data } = await apiClient.post<ApiResponse<DramaBatchJob>>(
+    `/drama/projects/${id}/pipelines/prompt-pack/retry-failed`,
+    payload,
+  );
+  return data;
 }
 
 export type DramaEpisodeExportFormat = "srt" | "timeline-json";

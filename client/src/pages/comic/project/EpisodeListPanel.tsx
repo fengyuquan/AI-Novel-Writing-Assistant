@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, BookOpen, Check, FileText, Layers, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, FileText, Layers, Loader2, Pencil, Sparkles, SquareStack, X } from "lucide-react";
 import {
   generateComicOutline,
   generateComicPanelScript,
@@ -26,12 +26,6 @@ const DENSITY_OPTIONS: Array<{ value: DensityMode; label: string; desc: string }
 ];
 
 const DENSITY_LABELS: Record<DensityMode, string> = { relaxed: "舒展", balanced: "均衡", compact: "紧凑" };
-
-const FACT_CATEGORY_ZH: Record<string, string> = {
-  completed: "已发生",
-  revealed: "首次出现",
-  state_changed: "状态变化",
-};
 
 function parsePresetFormat(raw: string | null | undefined): string {
   if (!raw) return "webtoon";
@@ -68,15 +62,33 @@ function resolveTargetPanelCount(densityMode: DensityMode, format: string): numb
   return 45;
 }
 
+function episodeHasPanels(ep: ComicEpisode): boolean {
+  return (ep._count?.panels ?? 0) > 0;
+}
+
+function buildScriptPayload(
+  densityMode: DensityMode,
+  targetPanelCount: number,
+  scriptPromptInstruction: string,
+): GenerateScriptPayload {
+  return {
+    targetPanelCount,
+    densityMode,
+    scriptPromptInstruction: scriptPromptInstruction.trim() || undefined,
+  };
+}
+
 // ─── Episode inline editor ──────────────────────────────────────────────────
 
 function EpisodeCard({
   ep,
   isBusy,
+  batchBusy,
   onGenerateScript,
 }: {
   ep: ComicEpisode;
   isBusy: boolean;
+  batchBusy: boolean;
   onGenerateScript: (ep: ComicEpisode) => void;
 }) {
   const queryClient = useQueryClient();
@@ -86,6 +98,7 @@ function EpisodeCard({
   const [draftCliffhanger, setDraftCliffhanger] = useState(ep.cliffhanger ?? "");
   const [draftPaywalled, setDraftPaywalled] = useState(ep.isPaywalled);
   const scriptConfig = parseScriptConfig(ep.scriptConfig);
+  const hasPanels = episodeHasPanels(ep);
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -224,9 +237,9 @@ function EpisodeCard({
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant={hasPanels ? "outline" : "default"}
             className="w-full"
-            disabled={isBusy || !ep.outline}
+            disabled={isBusy || batchBusy || !ep.outline}
             onClick={() => onGenerateScript(ep)}
           >
             {isBusy ? (
@@ -237,7 +250,7 @@ function EpisodeCard({
             ) : (
               <>
                 <BookOpen className="h-3.5 w-3.5" />
-                生成分格脚本
+                {hasPanels ? "重新生成分格脚本" : "生成分格脚本"}
               </>
             )}
           </Button>
@@ -284,6 +297,7 @@ export function EpisodeListPanel({
 }) {
   const queryClient = useQueryClient();
   const [busyEpId, setBusyEpId] = useState("");
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [densityMode, setDensityMode] = useState<DensityMode>("balanced");
   const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [scriptPromptInstruction, setScriptPromptInstruction] = useState("");
@@ -295,6 +309,12 @@ export function EpisodeListPanel({
 
   const format = parsePresetFormat(project.stylePreset);
   const targetPanelCount = resolveTargetPanelCount(densityMode, format);
+  const outlinedEpisodes = episodes.filter((ep) => Boolean(ep.outline?.trim()));
+  const pendingScriptEpisodes = outlinedEpisodes.filter((ep) => !episodeHasPanels(ep));
+  const scriptedEpisodes = outlinedEpisodes.filter((ep) => episodeHasPanels(ep));
+  const batchBusy = Boolean(batchProgress);
+  const nextOutlineStart = (episodes.length || 0) + 1;
+  const nextOutlineEnd = nextOutlineStart + 11;
 
   const bundleMut = useMutation({
     mutationFn: () => importComicSourceBundle(projectId),
@@ -327,20 +347,102 @@ export function EpisodeListPanel({
     onSettled: () => setBusyEpId(""),
   });
 
+  const batchScriptMut = useMutation({
+    mutationFn: async (targets: ComicEpisode[]) => {
+      const payload = buildScriptPayload(densityMode, targetPanelCount, scriptPromptInstruction);
+      const succeeded: number[] = [];
+      const failed: Array<{ order: number; message: string }> = [];
+      setBatchProgress({ current: 0, total: targets.length });
+      for (let index = 0; index < targets.length; index += 1) {
+        const episode = targets[index];
+        setBusyEpId(episode.id);
+        setBatchProgress({ current: index + 1, total: targets.length });
+        try {
+          await generateComicPanelScript(episode.id, payload);
+          succeeded.push(episode.order);
+        } catch (error) {
+          failed.push({
+            order: episode.order,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return { succeeded, failed };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["comic", "episodes", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["comic", "panels"] });
+      if (result.failed.length === 0) {
+        toast.success(`已为 ${result.succeeded.length} 话生成分格脚本`);
+        return;
+      }
+      if (result.succeeded.length === 0) {
+        toast.error(`分格生成失败：${result.failed.map((item) => `第${item.order}话`).join("、")}`);
+        return;
+      }
+      toast.error(
+        `完成 ${result.succeeded.length} 话，失败 ${result.failed.length} 话（${result.failed.map((item) => `第${item.order}话`).join("、")}）`,
+      );
+    },
+    onError: (e) => toast.error(String(e)),
+    onSettled: () => {
+      setBusyEpId("");
+      setBatchProgress(null);
+    },
+  });
+
+  const requestGenerateOutline = () => {
+    if (!project.sourceBundle) return;
+    if (episodes.length > 0) {
+      const ok = window.confirm(
+        `这会追加第 ${nextOutlineStart}-${nextOutlineEnd} 话大纲，不会改动已有话。\n\n`
+        + "若你想生成分格脚本，请点「一键生成分格」或各话上的「生成分格脚本」。\n\n"
+        + "确认要继续追加大纲吗？",
+      );
+      if (!ok) return;
+    }
+    outlineMut.mutate({ startOrder: nextOutlineStart, count: 12 });
+  };
+
   const generateScript = (episode: ComicEpisode) => {
-    if ((episode._count?.panels ?? 0) > 0) {
+    if (episodeHasPanels(episode)) {
       const ok = window.confirm("重新生成会替换本话已有格子脚本，并影响后续批量生图。继续生成吗？");
       if (!ok) return;
     }
     scriptMut.mutate({
       episodeId: episode.id,
-      payload: {
-        targetPanelCount,
-        densityMode,
-        scriptPromptInstruction: scriptPromptInstruction.trim() || undefined,
-      },
+      payload: buildScriptPayload(densityMode, targetPanelCount, scriptPromptInstruction),
     });
   };
+
+  const requestBatchGenerateScripts = () => {
+    if (outlinedEpisodes.length === 0) {
+      toast.error("请先生成分话大纲");
+      return;
+    }
+
+    let targets = pendingScriptEpisodes;
+    if (targets.length === 0) {
+      const ok = window.confirm(
+        `当前 ${scriptedEpisodes.length} 话都已有分格脚本。\n\n`
+        + "一键重新生成会替换全部已有格子，并影响后续出图。确认继续吗？",
+      );
+      if (!ok) return;
+      targets = outlinedEpisodes;
+    } else {
+      const skipHint = scriptedEpisodes.length > 0
+        ? `\n已有分格的 ${scriptedEpisodes.length} 话会自动跳过。`
+        : "";
+      const ok = window.confirm(
+        `将依次为 ${targets.length} 话生成分格脚本，可能需要几分钟。${skipHint}\n\n确认开始吗？`,
+      );
+      if (!ok) return;
+    }
+
+    batchScriptMut.mutate(targets);
+  };
+
+  const isActionBusy = outlineMut.isPending || scriptMut.isPending || batchBusy || bundleMut.isPending;
 
   return (
     <div className="space-y-4">
@@ -361,19 +463,47 @@ export function EpisodeListPanel({
                 {bundleMut.isPending ? "导入中..." : "导入内容源"}
               </Button>
             )}
+            {episodes.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={isActionBusy || outlinedEpisodes.length === 0}
+                onClick={requestBatchGenerateScripts}
+              >
+                {batchBusy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    分格中 {batchProgress?.current}/{batchProgress?.total}
+                  </>
+                ) : (
+                  <>
+                    <SquareStack className="h-4 w-4" />
+                    {pendingScriptEpisodes.length > 0
+                      ? `一键生成分格（${pendingScriptEpisodes.length} 话）`
+                      : "一键重新生成全部分格"}
+                  </>
+                )}
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
-              disabled={outlineMut.isPending || !project.sourceBundle}
-              onClick={() => outlineMut.mutate({ startOrder: (episodes.length || 0) + 1, count: 12 })}
+              variant={episodes.length > 0 ? "outline" : "default"}
+              disabled={outlineMut.isPending || batchBusy || !project.sourceBundle}
+              onClick={requestGenerateOutline}
             >
               <Sparkles className="h-4 w-4" />
-              {outlineMut.isPending ? "生成中..." : `生成第 ${(episodes.length || 0) + 1}-${(episodes.length || 0) + 12} 话大纲`}
+              {outlineMut.isPending
+                ? "生成中..."
+                : episodes.length > 0
+                  ? `追加第 ${nextOutlineStart}-${nextOutlineEnd} 话大纲`
+                  : `生成第 ${nextOutlineStart}-${nextOutlineEnd} 话大纲`}
             </Button>
             <Button
               type="button"
               size="sm"
               variant="outline"
+              disabled={batchBusy}
               onClick={() => setShowPromptSettings((v) => !v)}
             >
               <FileText className="h-4 w-4" />
@@ -394,6 +524,7 @@ export function EpisodeListPanel({
                   ].join(" ")}
                   onClick={() => setDensityMode(option.value)}
                   title={option.desc}
+                  disabled={batchBusy}
                 >
                   {option.label}
                 </button>
@@ -411,6 +542,7 @@ export function EpisodeListPanel({
               onChange={(event) => setScriptPromptInstruction(event.target.value)}
               placeholder="可补充本次分格重点，例如：多给主角冷静反应特写，避免每格都塞满背景，结尾强化悬念。"
               className="min-h-20 w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed"
+              disabled={batchBusy}
             />
             <div className="flex justify-between text-[11px] text-muted-foreground">
               <span>这些要求只影响本次分格生成，不会覆盖角色锚点、画风和结构化输出规则。</span>
@@ -418,13 +550,19 @@ export function EpisodeListPanel({
             </div>
           </div>
         )}
+
+        {batchBusy ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            正在依次生成分格脚本（第 {batchProgress?.current}/{batchProgress?.total} 话），请稍候，不要关闭页面。
+          </p>
+        ) : null}
       </div>
 
       {isLoading && <div className="py-8 text-center text-sm text-muted-foreground">加载中...</div>}
 
       {!isLoading && episodes.length === 0 && (
         <div className="py-8 text-center text-sm text-muted-foreground">
-          尚无分话大纲，点击「生成大纲」开始。
+          尚无分话大纲，点击上方「生成大纲」开始。
         </div>
       )}
 
@@ -434,6 +572,7 @@ export function EpisodeListPanel({
             key={ep.id}
             ep={ep}
             isBusy={busyEpId === ep.id}
+            batchBusy={batchBusy}
             onGenerateScript={generateScript}
           />
         ))}

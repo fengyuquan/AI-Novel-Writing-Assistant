@@ -3,6 +3,7 @@ import { useLLMStore } from "@/store/llmStore";
 import AiButton from "@/components/common/AiButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import type { ChapterEditorPersistStatus } from "../chapterEditorUtils";
 import ChapterEditorStyleBenchmarkCompareDialog from "./ChapterEditorStyleBenchmarkCompareDialog";
 import { enterBrowserFullscreen } from "./browserFullscreen";
 import { StyleBenchmarkEssenceSummary } from "./StyleBenchmarkEssenceSummary";
@@ -10,12 +11,18 @@ import { SHORT_LANDSCAPE_MAX_HEIGHT_PX } from "./useStyleBenchmarkCompareDeskMod
 import { benchmarkVersionKey, formatBenchmarkModelLabel } from "./styleBenchmarkStorage";
 import { useChapterEditorStyleBenchmarkActions } from "./useChapterEditorStyleBenchmarkActions";
 
+/** 对照窗改正文后的定时落库间隔（停顿后再写章节）。 */
+const USER_CONTENT_AUTOSAVE_MS = 1500;
+
 interface ChapterEditorStyleBenchmarkPanelProps {
   novelId: string;
   chapterId: string;
   contentDraft: string;
   isDirty: boolean;
+  contentSaveStatus: ChapterEditorPersistStatus;
+  isSavingContent: boolean;
   onContentChange: (next: string) => void;
+  onAutoSaveContent: (content: string) => void;
   onLocateEvidence: (evidence: string, description?: string) => void;
 }
 
@@ -25,7 +32,10 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
     chapterId,
     contentDraft,
     isDirty,
+    contentSaveStatus,
+    isSavingContent,
     onContentChange,
+    onAutoSaveContent,
   } = props;
   const llm = useLLMStore();
   const {
@@ -55,6 +65,7 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
     runRewrite,
     runCompare,
     clearCachedResults,
+    flushPendingCacheSave,
   } = useChapterEditorStyleBenchmarkActions({
     novelId,
     chapterId,
@@ -68,6 +79,8 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
 
   const [compareOpen, setCompareOpen] = useState(false);
   const lastAutoOpenedSessionRef = useRef<string | null>(null);
+  const contentDraftRef = useRef(contentDraft);
+  contentDraftRef.current = contentDraft;
 
   useEffect(() => {
     if (benchmarks.length === 0) {
@@ -84,6 +97,27 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
       setCompareOpen(true);
     }
   }, [benchmarks.length, latestGeneratedSessionId, restoredFromCache]);
+
+  // 对照窗打开期间：改正文后定时自动保存到章节库（手机对照时底栏保存按钮会被藏住）。
+  useEffect(() => {
+    if (!compareOpen || !isDirty || isSavingContent) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      onAutoSaveContent(contentDraftRef.current);
+    }, USER_CONTENT_AUTOSAVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [compareOpen, isDirty, contentDraft, isSavingContent, contentSaveStatus, onAutoSaveContent]);
+
+  const handleCompareOpenChange = (open: boolean) => {
+    if (!open) {
+      void flushPendingCacheSave();
+      if (isDirty && !isSavingContent) {
+        onAutoSaveContent(contentDraftRef.current);
+      }
+    }
+    setCompareOpen(open);
+  };
 
   const canRunRewrite = Boolean(contentDraft.trim() && selectedSourceKey) && !isRewriting && !isComparing;
   const currentVersionKey = selectedSourceKey
@@ -103,7 +137,7 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
         <div className="text-xs leading-5 text-muted-foreground">
           先提炼范文精髓，再按精髓写对照稿；长章会分段仿写后统一声口。写好后打开对照窗做段落学习
           {isDirty ? "（会用当前编辑区正文，含未保存修改）" : ""}
-          。范文会保存到本章数据库缓存，下次打开同一章仍在。
+          。范文与正文都会定时自动保存，下次打开同一章仍在。
         </div>
       </div>
 
@@ -230,7 +264,7 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
       {benchmarks.length > 0 ? (
         <ChapterEditorStyleBenchmarkCompareDialog
           open={compareOpen}
-          onOpenChange={setCompareOpen}
+          onOpenChange={handleCompareOpenChange}
           benchmarks={benchmarks}
           visibleBenchmarks={visibleBenchmarks}
           focusedBenchmark={focusedBenchmark}
@@ -249,6 +283,9 @@ export default function ChapterEditorStyleBenchmarkPanel(props: ChapterEditorSty
           onToggleBenchmarkVisible={toggleBenchmarkVisible}
           onRemoveBenchmark={removeBenchmark}
           onLayoutColumnsChange={setLayoutColumns}
+          contentSaveStatus={contentSaveStatus}
+          isDirtyContent={isDirty}
+          isSavingContent={isSavingContent}
         />
       ) : null}
     </div>

@@ -4,12 +4,15 @@ import { prisma } from "../../db/prisma";
 export type ImageModelProvider = "openai" | "siliconflow" | "grok";
 
 const IMAGE_MODEL_SETTING_PREFIX = "provider.imageModel";
+const IMAGE_MODEL_CATALOG_PREFIX = "provider.imageModelCatalog";
 
 const IMAGE_MODEL_OPTIONS: Record<ImageModelProvider, string[]> = {
   openai: ["gpt-image-2"],
   siliconflow: ["black-forest-labs/FLUX.1-schnell"],
   grok: ["grok-imagine-image"],
 };
+
+const IMAGE_MODEL_HINT_PATTERN = /image|img|flux|dall-?e|gpt-image|imagen|stable[-_]?diffusion|\bsd\b|sdxl|grok-imagine|midjourney|kolors|qwen[-_]?image|seedream|ideogram|recraft/i;
 
 function isMissingTableError(error: unknown): boolean {
   return (
@@ -52,6 +55,110 @@ export function getImageModelOptions(provider: LLMProvider): string[] {
 
 export function getDefaultImageModel(provider: LLMProvider): string | undefined {
   return getImageModelOptions(provider)[0];
+}
+
+export function looksLikeImageModel(model: string): boolean {
+  return IMAGE_MODEL_HINT_PATTERN.test(model.trim());
+}
+
+export function filterImageLikeModels(models: string[]): string[] {
+  return Array.from(new Set(
+    models
+      .map((item) => item.trim())
+      .filter((item) => item && looksLikeImageModel(item)),
+  ));
+}
+
+export function mergeImageModelOptions(
+  provider: LLMProvider,
+  catalog: string[] = [],
+  currentImageModel?: string | null,
+): string[] {
+  return Array.from(new Set([
+    ...getImageModelOptions(provider),
+    ...catalog,
+    currentImageModel?.trim() || "",
+  ].filter(Boolean)));
+}
+
+function getImageModelCatalogSettingKey(provider: LLMProvider): string | null {
+  if (!supportsImageModelSettings(provider)) {
+    return null;
+  }
+  return `${IMAGE_MODEL_CATALOG_PREFIX}.${provider}`;
+}
+
+export async function getCachedImageModelCatalog(provider: LLMProvider): Promise<string[]> {
+  const key = getImageModelCatalogSettingKey(provider);
+  if (!key) {
+    return [];
+  }
+  try {
+    const record = await prisma.appSetting.findUnique({ where: { key } });
+    if (!record?.value?.trim()) {
+      return [];
+    }
+    const parsed = JSON.parse(record.value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+      .map((item) => item.trim());
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return [];
+    }
+    return [];
+  }
+}
+
+export async function getCachedImageModelCatalogMap(
+  providers: LLMProvider[],
+): Promise<Map<LLMProvider, string[]>> {
+  const result = new Map<LLMProvider, string[]>();
+  await Promise.all(providers.map(async (provider) => {
+    result.set(provider, await getCachedImageModelCatalog(provider));
+  }));
+  return result;
+}
+
+export async function saveCachedImageModelCatalog(
+  provider: LLMProvider,
+  models: string[],
+): Promise<string[]> {
+  const key = getImageModelCatalogSettingKey(provider);
+  if (!key) {
+    return [];
+  }
+  const normalized = Array.from(new Set(
+    models.map((item) => item.trim()).filter(Boolean),
+  ));
+  try {
+    if (normalized.length === 0) {
+      await prisma.appSetting.deleteMany({ where: { key } });
+      return [];
+    }
+    await prisma.appSetting.upsert({
+      where: { key },
+      update: { value: JSON.stringify(normalized) },
+      create: { key, value: JSON.stringify(normalized) },
+    });
+    return normalized;
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return normalized;
+    }
+    throw error;
+  }
+}
+
+export async function resolveImageModelOptions(
+  provider: LLMProvider,
+  currentImageModel?: string | null,
+): Promise<string[]> {
+  const catalog = await getCachedImageModelCatalog(provider);
+  return mergeImageModelOptions(provider, catalog, currentImageModel);
 }
 
 export function getProviderEnvImageModel(provider: LLMProvider): string | undefined {

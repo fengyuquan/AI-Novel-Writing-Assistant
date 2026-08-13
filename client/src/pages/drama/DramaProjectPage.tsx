@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   CheckCircle2,
+  Copy,
   Download,
   RefreshCw,
   Save,
@@ -42,10 +43,18 @@ import { queryKeys } from "@/api/queryKeys";
 import { DramaCharactersPanel } from "@/pages/drama/components/DramaCharactersPanel";
 import { DramaEpisodeAudioPanel } from "@/pages/drama/components/DramaEpisodeAudioPanel";
 import { DramaNextStepPanel } from "@/pages/drama/components/DramaNextStepPanel";
+import { DramaPromptPackPipelineCard } from "@/pages/drama/components/DramaPromptPackPipelineCard";
 import { DramaQualityPanel } from "@/pages/drama/components/DramaQualityPanel";
 import { DramaSourcePanel } from "@/pages/drama/components/DramaSourcePanel";
 import { DramaVisualPanel } from "@/pages/drama/components/DramaVisualPanel";
 import { dramaTrackLabel } from "@/pages/drama/dramaDisplay";
+import { getDramaLlmOptions } from "@/pages/drama/dramaLlmOptions";
+import {
+  buildPromptPackCopyText,
+  promptPackCopyFilename,
+  type DramaPromptPackCopyFormat,
+} from "@/pages/drama/dramaPromptPackCopy";
+import { copyTextWithFallback, describeCopyResult, downloadPlainTextFile } from "@/lib/clipboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -476,12 +485,62 @@ export default function DramaProjectPage() {
     return actionMutation.mutateAsync({ action, message });
   };
 
-  const handleExport = async (format: "markdown" | "json") => {
+  const handleExport = async (format: "markdown" | "json" | "prompt-pack" | "prompt-pack-captioned") => {
     if (!project) {
       return;
     }
-    const blob = await downloadDramaExport(project.id, format);
-    downloadBlob(blob, `${project.title}-short-drama.${format === "json" ? "json" : "md"}`);
+    try {
+      const blob = await downloadDramaExport(project.id, format);
+      const filename = format === "prompt-pack-captioned"
+        ? `${project.title}-prompt-pack-captioned.json`
+        : format === "prompt-pack"
+          ? `${project.title}-prompt-pack.json`
+          : `${project.title}-short-drama.${format === "json" ? "json" : "md"}`;
+      downloadBlob(blob, filename);
+      toast.success("导出文件已开始下载。");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "导出失败。");
+    }
+  };
+
+  const handleCopyPromptPack = async (format: DramaPromptPackCopyFormat) => {
+    if (!project) {
+      return;
+    }
+    try {
+      const blob = await downloadDramaExport(project.id, format);
+      const jsonBody = await blob.text();
+      const text = buildPromptPackCopyText(format, jsonBody);
+      const filename = promptPackCopyFilename(format, project.title);
+      const result = await copyTextWithFallback(text, { downloadFilename: filename });
+      if (result.method === "download") {
+        toast.success(describeCopyResult(result));
+        return;
+      }
+      toast.success(
+        format === "prompt-pack-captioned"
+          ? "已复制对话入画文本（含豆包说明与 JSON）。"
+          : "已复制切图包文本（含豆包说明与 JSON）。",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "复制失败。");
+    }
+  };
+
+  const handleDownloadPromptPackText = async (format: DramaPromptPackCopyFormat) => {
+    if (!project) {
+      return;
+    }
+    try {
+      const blob = await downloadDramaExport(project.id, format);
+      const jsonBody = await blob.text();
+      const text = buildPromptPackCopyText(format, jsonBody);
+      const filename = promptPackCopyFilename(format, project.title);
+      downloadPlainTextFile(text, filename);
+      toast.success(`文本已下载：${filename}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "下载文本失败。");
+    }
   };
 
   const handleEpisodeExport = async (order: number, format: DramaEpisodeExportFormat) => {
@@ -565,19 +624,21 @@ export default function DramaProjectPage() {
 
       <ProjectProgress project={project} />
 
+      <DramaPromptPackPipelineCard project={project} />
+
       <DramaNextStepPanel
         project={project}
         busy={actionMutation.isPending}
         onSetTab={setActiveTab}
         onSelectEpisode={setSelectedOrder}
         onAssembleSource={() => runAction(() => assembleDramaSourceBundle(project.id), "短剧素材已整理。")}
-        onGenerateStrategy={() => runAction(() => generateDramaStrategy(project.id), "短剧策略已生成。")}
-        onGenerateOutline={() => runAction(() => generateDramaOutline(project.id, { startOrder: 1, count: 12 }), "前 12 集分集已生成。")}
-        onGenerateScript={(order) => runAction(() => generateDramaEpisodeScript(project.id, order), `第 ${order} 集台本已生成。`)}
-        onReviewEpisode={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
-        onRepairEpisode={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}
-        onGenerateStoryboard={(order) => runAction(() => generateDramaStoryboard(project.id, order), `第 ${order} 集分镜已生成。`)}
-        onGenerateVideoPrompt={(shot) => runAction(() => generateDramaVideoPrompt(project.id, shot.id), `镜头 ${shot.order} 的视频提示词已生成。`)}
+        onGenerateStrategy={() => runAction(() => generateDramaStrategy(project.id, getDramaLlmOptions()), "短剧策略已生成。")}
+        onGenerateOutline={() => runAction(() => generateDramaOutline(project.id, { ...getDramaLlmOptions(), startOrder: 1, count: 12 }), "前 12 集分集已生成。")}
+        onGenerateScript={(order) => runAction(() => generateDramaEpisodeScript(project.id, order, getDramaLlmOptions()), `第 ${order} 集台本已生成。`)}
+        onReviewEpisode={(order) => runAction(() => reviewDramaEpisode(project.id, order, getDramaLlmOptions()), `第 ${order} 集质量检查完成。`)}
+        onRepairEpisode={(order) => runAction(() => repairDramaEpisode(project.id, order, getDramaLlmOptions()), `第 ${order} 集已按质量建议修复。`)}
+        onGenerateStoryboard={(order) => runAction(() => generateDramaStoryboard(project.id, order, getDramaLlmOptions()), `第 ${order} 集分镜已生成。`)}
+        onGenerateVideoPrompt={(shot) => runAction(() => generateDramaVideoPrompt(project.id, shot.id, getDramaLlmOptions()), `镜头 ${shot.order} 的视频提示词已生成。`)}
         onCreateProviderTask={(prompt) => runAction(() => createDramaVideoProviderTask(prompt.id, activeVideoProvider), "视频任务已创建。")}
         onExportMarkdown={() => void handleExport("markdown")}
       />
@@ -606,9 +667,9 @@ export default function DramaProjectPage() {
           ttsProviders={ttsProviders}
           onBatchJob={(order, input) => runAction(() => createDramaEpisodeBatchJob(project.id, order, input), "配音任务已创建。")}
           busy={actionMutation.isPending}
-          onGenerateScript={(order) => runAction(() => generateDramaEpisodeScript(project.id, order), `第 ${order} 集台本已生成。`)}
-          onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
-          onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}
+          onGenerateScript={(order) => runAction(() => generateDramaEpisodeScript(project.id, order, getDramaLlmOptions()), `第 ${order} 集台本已生成。`)}
+          onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order, getDramaLlmOptions()), `第 ${order} 集质量检查完成。`)}
+          onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order, getDramaLlmOptions()), `第 ${order} 集已按质量建议修复。`)}
           onSave={handleSaveEpisode}
         />
       ) : null}
@@ -618,9 +679,9 @@ export default function DramaProjectPage() {
           busy={actionMutation.isPending}
           onSelectEpisode={setSelectedOrder}
           onOpenEpisodes={() => setActiveTab("episodes")}
-          onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order), `第 ${order} 集质量检查完成。`)}
-          onComplianceAll={() => runAction(() => checkDramaProjectCompliance(project.id), "合规预检完成。")}
-          onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order), `第 ${order} 集已按质量建议修复。`)}
+          onReview={(order) => runAction(() => reviewDramaEpisode(project.id, order, getDramaLlmOptions()), `第 ${order} 集质量检查完成。`)}
+          onComplianceAll={() => runAction(() => checkDramaProjectCompliance(project.id, getDramaLlmOptions()), "合规预检完成。")}
+          onRepair={(order) => runAction(() => repairDramaEpisode(project.id, order, getDramaLlmOptions()), `第 ${order} 集已按质量建议修复。`)}
         />
       ) : null}
       {activeTab === "characters" ? (
@@ -663,10 +724,10 @@ export default function DramaProjectPage() {
           selectedOrder={selectedOrderValue}
           onSelectOrder={setSelectedOrder}
           busy={actionMutation.isPending}
-          onStoryboard={(order) => runAction(() => generateDramaStoryboard(project.id, order), `第 ${order} 集分镜已生成。`)}
+          onStoryboard={(order) => runAction(() => generateDramaStoryboard(project.id, order, getDramaLlmOptions()), `第 ${order} 集分镜已生成。`)}
           onBatchJob={(order, input) => runAction(() => createDramaEpisodeBatchJob(project.id, order, input), "批量任务已创建。")}
           onKeyframe={(shot, provider, useCharacterRefImages, overrides) => runAction(() => generateDramaShotKeyframe(project.id, shot.id, provider, useCharacterRefImages, overrides), `镜头 ${shot.order} 的首帧图已生成。`)}
-          onVideoPrompt={(shot) => runAction(() => generateDramaVideoPrompt(project.id, shot.id), `镜头 ${shot.order} 的视频提示词已生成。`)}
+          onVideoPrompt={(shot) => runAction(() => generateDramaVideoPrompt(project.id, shot.id, getDramaLlmOptions()), `镜头 ${shot.order} 的视频提示词已生成。`)}
           videoProviders={videoProviders}
           selectedProvider={activeVideoProvider}
           onSelectProvider={setSelectedVideoProvider}
@@ -678,7 +739,9 @@ export default function DramaProjectPage() {
         <Card className="rounded-lg">
           <CardHeader>
             <CardTitle className="text-lg">导出短剧资料</CardTitle>
-            <CardDescription>导出当前项目的角色、分集和已生成台本。</CardDescription>
+            <CardDescription>
+              导出角色与分集台本，或下载/复制提示词包。复制文本含豆包说明与 JSON；若环境不能写剪贴板，可改用「下载文本」。
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Button type="button" onClick={() => void handleExport("markdown")}>
@@ -688,6 +751,30 @@ export default function DramaProjectPage() {
             <Button type="button" variant="outline" onClick={() => void handleExport("json")}>
               <Download className="h-4 w-4" />
               导出 JSON
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleExport("prompt-pack")}>
+              <Download className="h-4 w-4" />
+              导出切图提示词包
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleCopyPromptPack("prompt-pack")}>
+              <Copy className="h-4 w-4" />
+              复制切图包文本
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleDownloadPromptPackText("prompt-pack")}>
+              <Download className="h-4 w-4" />
+              下载切图包文本
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleExport("prompt-pack-captioned")}>
+              <Download className="h-4 w-4" />
+              导出对话入画提示词包
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleCopyPromptPack("prompt-pack-captioned")}>
+              <Copy className="h-4 w-4" />
+              复制对话入画文本
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleDownloadPromptPackText("prompt-pack-captioned")}>
+              <Download className="h-4 w-4" />
+              下载对话入画文本
             </Button>
             {selectedOrderValue ? (
               <>

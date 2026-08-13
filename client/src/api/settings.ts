@@ -120,6 +120,11 @@ export interface LLMSelectionSettings {
   maxTokens?: number;
 }
 
+export interface ImageSelectionSettings {
+  provider: LLMProvider;
+  model: string;
+}
+
 export interface ModelRoutesResponse {
   taskTypes: ModelRouteTaskType[];
   routes: Array<{
@@ -305,6 +310,16 @@ export async function saveLLMSelectionSetting(payload: LLMSelectionSettings) {
   return data;
 }
 
+export async function getImageSelectionSetting() {
+  const { data } = await apiClient.get<ApiResponse<ImageSelectionSettings | null>>("/settings/image-selection");
+  return data;
+}
+
+export async function saveImageSelectionSetting(payload: ImageSelectionSettings) {
+  const { data } = await apiClient.put<ApiResponse<ImageSelectionSettings>>("/settings/image-selection", payload);
+  return data;
+}
+
 export async function saveStyleEngineRuntimeSettings(payload: {
   styleExtractionTimeoutMs: number;
 }) {
@@ -402,6 +417,8 @@ export async function refreshProviderModelList(provider: LLMProvider) {
       provider: string;
       models: string[];
       currentModel: string;
+      imageModels: string[];
+      currentImageModel: string | null;
     }>
   >(`/settings/api-keys/${provider}/refresh-models`);
   return data;

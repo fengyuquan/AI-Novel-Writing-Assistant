@@ -90,6 +90,7 @@ export function CreationSetupProvider({ children }: { children: ReactNode }) {
       statusResolved: statusQuery.isSuccess,
       readyForCreation,
       pathname: location.pathname,
+      dismissed: window.localStorage.getItem(DISMISSED_STORAGE_KEY) === "true",
     })) {
       setForceConfiguration(false);
       setDialogOpen(true);

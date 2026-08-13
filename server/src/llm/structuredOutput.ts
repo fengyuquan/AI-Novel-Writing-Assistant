@@ -430,6 +430,36 @@ export function extractStructuredOutputErrorCategory(message?: string | null): S
   ].includes(category) ? category : null;
 }
 
+/**
+ * 把上游厂商常见错误转成用户可行动的中文提示。
+ * 例如 DeepSeek 的 `402 Insufficient Balance`。
+ */
+export function humanizeLlmProviderErrorMessage(message: string): string {
+  const raw = message.trim();
+  if (!raw) {
+    return "模型调用失败。";
+  }
+  const lower = raw.toLowerCase();
+  const looksLikeBalanceIssue = (
+    lower.includes("insufficient balance")
+    || lower.includes("insufficient_balance")
+    || lower.includes("insufficient credits")
+    || lower.includes("insufficient_quota")
+    || lower.includes("exceeded your current quota")
+    || (lower.includes("402") && (lower.includes("balance") || lower.includes("quota") || lower.includes("billing")))
+  );
+  if (looksLikeBalanceIssue) {
+    return "当前模型厂商账户余额不足（HTTP 402）。请到系统设置检查默认模型，给 DeepSeek / 对应厂商充值，或切换到其他已配置且有余额的厂商后再生成。";
+  }
+  if (lower.includes("401") && (lower.includes("unauthorized") || lower.includes("invalid api key") || lower.includes("authentication"))) {
+    return "当前模型厂商 API Key 无效或未授权。请到系统设置重新配置 API Key。";
+  }
+  if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) {
+    return "当前模型厂商请求过于频繁或触发限流。请稍后再试，或切换其他厂商。";
+  }
+  return raw.replace(/^\[STRUCTURED_OUTPUT:[a-z_]+\]\s*/i, "").trim() || raw;
+}
+
 export class StructuredOutputError extends Error {
   readonly category: StructuredOutputErrorCategory;
 

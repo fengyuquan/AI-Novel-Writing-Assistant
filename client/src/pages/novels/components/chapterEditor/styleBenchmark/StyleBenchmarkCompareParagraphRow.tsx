@@ -23,11 +23,13 @@ export interface CompareVisibleParagraphSet {
 interface StyleBenchmarkCompareParagraphRowProps {
   rowIndex: number;
   active: boolean;
+  isWeak?: boolean;
   deskMode: StyleBenchmarkCompareDeskMode;
   columnTemplate: string;
   userParagraphs: string[];
   visibleParagraphSets: CompareVisibleParagraphSet[];
   onSelectRow: () => void;
+  onEditFocus?: () => void;
   onUserContentChange: (next: string, nextSelectedRow?: number) => void;
   onBenchmarkContentChange: (sessionId: string, nextContent: string, nextSelectedRow?: number) => void;
   onFocusBenchmark: (sessionId: string) => void;
@@ -38,11 +40,13 @@ export function StyleBenchmarkCompareParagraphRow(props: StyleBenchmarkComparePa
   const {
     rowIndex,
     active,
+    isWeak,
     deskMode,
     columnTemplate,
     userParagraphs,
     visibleParagraphSets,
     onSelectRow,
+    onEditFocus,
     onUserContentChange,
     onBenchmarkContentChange,
     onFocusBenchmark,
@@ -54,11 +58,17 @@ export function StyleBenchmarkCompareParagraphRow(props: StyleBenchmarkComparePa
   const hideCellVersionLabel = shortLandscape;
   const compactAlign = stack || shortLandscape;
 
+  const handleEditFocus = () => {
+    onSelectRow();
+    onEditFocus?.();
+  };
+
   const userCell = (
     <div className="flex min-h-0 flex-col rounded-xl border border-border/60 bg-background/80 p-2">
       <div className="mb-1 flex min-w-0 items-center justify-between gap-1">
         <div className="min-w-0 text-[11px] leading-snug text-muted-foreground">
           第 {rowIndex + 1} 段 · 你的
+          {isWeak ? <span className="ml-1 font-medium text-amber-800">· 偏弱</span> : null}
         </div>
         <ParagraphAlignControls
           rowIndex={rowIndex}
@@ -77,10 +87,10 @@ export function StyleBenchmarkCompareParagraphRow(props: StyleBenchmarkComparePa
       </div>
       <textarea
         value={paragraphAt(userParagraphs, rowIndex)}
-        onFocus={onSelectRow}
+        onFocus={handleEditFocus}
         onClick={(event) => {
           event.stopPropagation();
-          onSelectRow();
+          handleEditFocus();
         }}
         onChange={(event) => {
           onUserContentChange(updateParagraphAt(userParagraphs, rowIndex, event.target.value));
@@ -142,12 +152,12 @@ export function StyleBenchmarkCompareParagraphRow(props: StyleBenchmarkComparePa
         <textarea
           value={paragraphAt(item.paragraphs, rowIndex)}
           onFocus={() => {
-            onSelectRow();
+            handleEditFocus();
             onFocusBenchmark(item.sessionId);
           }}
           onClick={(event) => {
             event.stopPropagation();
-            onSelectRow();
+            handleEditFocus();
             onFocusBenchmark(item.sessionId);
           }}
           onChange={(event) => {
@@ -174,8 +184,12 @@ export function StyleBenchmarkCompareParagraphRow(props: StyleBenchmarkComparePa
       className={cn(
         "rounded-2xl border p-2 transition-colors",
         active
-          ? "border-sky-300 bg-sky-50/70 ring-1 ring-sky-200"
-          : "border-border/60 bg-background hover:border-border",
+          ? isWeak
+            ? "border-amber-400 bg-amber-50/60 ring-1 ring-amber-200"
+            : "border-sky-300 bg-sky-50/70 ring-1 ring-sky-200"
+          : isWeak
+            ? "border-amber-300/80 bg-amber-50/40 hover:border-amber-400"
+            : "border-border/60 bg-background hover:border-border",
         stack ? "flex flex-col gap-2" : "grid gap-2",
       )}
       style={{

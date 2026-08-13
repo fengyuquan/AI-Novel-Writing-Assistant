@@ -9,6 +9,7 @@ import {
   generateDramaStrategy,
   listDramaProjects,
   recommendDramaTrack,
+  startDramaPromptPackPipeline,
   type CreateDramaProjectPayload,
   type DramaTrackRecommendation,
   type DramaProject,
@@ -21,6 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "@/components/ui/toast";
 import { getNovelList } from "@/api/novel/core";
 import { DRAMA_SOURCE_LABELS, DRAMA_TRACK_OPTIONS, dramaTrackLabel } from "./dramaDisplay";
+import { getDramaLlmOptions } from "./dramaLlmOptions";
 import SelectControl from "@/components/common/SelectControl";
 
 const WIZARD_STEPS = [
@@ -28,6 +30,8 @@ const WIZARD_STEPS = [
   { key: "content", label: "内容" },
   { key: "settings", label: "规格" },
 ] as const;
+
+const SLIDESHOW_DEFAULT_EPISODES = "12";
 
 function statusLabel(status: string): string {
   const labels: Record<string, string> = {
@@ -101,6 +105,7 @@ function ProjectCard(props: {
   onAssemble: (project: DramaProject) => void;
   onStrategy: (project: DramaProject) => void;
   onOutline: (project: DramaProject) => void;
+  onPromptPack: (project: DramaProject) => void;
 }) {
   const isBusy = props.busyProjectId === props.project.id;
 
@@ -128,6 +133,15 @@ function ProjectCard(props: {
         <Button
           type="button"
           size="sm"
+          disabled={isBusy || !props.project.track}
+          onClick={() => props.onPromptPack(props.project)}
+        >
+          <Sparkles className="h-4 w-4" />
+          一键生成切图提示词包
+        </Button>
+        <Button
+          type="button"
+          size="sm"
           variant="outline"
           disabled={isBusy}
           onClick={() => props.onAssemble(props.project)}
@@ -148,6 +162,7 @@ function ProjectCard(props: {
         <Button
           type="button"
           size="sm"
+          variant="outline"
           disabled={isBusy}
           onClick={() => props.onOutline(props.project)}
         >
@@ -165,7 +180,7 @@ export default function DramaWorkspacePage() {
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState({
     title: "",
-    source: "original" as DramaSourceType,
+    source: "novel_import" as DramaSourceType,
     sourceRef: "",
     inspiration: "",
     rawText: "",
@@ -173,8 +188,14 @@ export default function DramaWorkspacePage() {
     theme: "",
     targetEpisodes: "80",
   });
+  const [slideshowForm, setSlideshowForm] = useState({
+    novelId: "",
+    targetEpisodes: SLIDESHOW_DEFAULT_EPISODES,
+    track: "counterattack",
+  });
   const [busyProjectId, setBusyProjectId] = useState("");
   const [trackRecommendation, setTrackRecommendation] = useState<DramaTrackRecommendation | null>(null);
+  const [slideshowBusy, setSlideshowBusy] = useState(false);
 
   const projectsQuery = useQuery({
     queryKey: queryKeys.drama.projects,
@@ -190,6 +211,10 @@ export default function DramaWorkspacePage() {
   const selectedNovel = useMemo(
     () => novels.find((novel) => novel.id === form.sourceRef),
     [form.sourceRef, novels],
+  );
+  const slideshowNovel = useMemo(
+    () => novels.find((novel) => novel.id === slideshowForm.novelId),
+    [novels, slideshowForm.novelId],
   );
   const canRecommendTrack = hasSourceContent(form);
 
@@ -215,6 +240,7 @@ export default function DramaWorkspacePage() {
 
   const trackRecommendationMutation = useMutation({
     mutationFn: () => recommendDramaTrack({
+      ...getDramaLlmOptions(),
       title: form.title.trim() || selectedNovel?.title || "短剧项目",
       sourceType: form.source,
       sourceDigest: buildRecommendationDigest(form, selectedNovel),
@@ -244,6 +270,58 @@ export default function DramaWorkspacePage() {
       toast.success(successMessage);
     } finally {
       setBusyProjectId("");
+    }
+  };
+
+  const handleNovelPromptPackOneClick = async () => {
+    if (!slideshowForm.novelId.trim()) {
+      toast.error("请先选择要导入的小说。");
+      return;
+    }
+    const novel = novels.find((item) => item.id === slideshowForm.novelId);
+    if (!novel) {
+      toast.error("没有找到选中的小说。");
+      return;
+    }
+    const targetEpisodes = Math.min(80, Math.max(1, Number(slideshowForm.targetEpisodes) || 12));
+    setSlideshowBusy(true);
+    try {
+      let track = slideshowForm.track;
+      try {
+        const recommendation = await recommendDramaTrack({
+          ...getDramaLlmOptions(),
+          title: novel.title || "短剧项目",
+          sourceType: "novel_import",
+          sourceDigest: `已选择小说《${novel.title || "未命名小说"}》，共 ${novel._count?.chapters ?? 0} 章。`,
+          targetEpisodes,
+        });
+        if (recommendation.data?.recommendedTrack) {
+          track = recommendation.data.recommendedTrack;
+          setSlideshowForm((current) => ({ ...current, track }));
+        }
+      } catch {
+        // 赛道推荐失败时沿用默认赛道，不阻断一键生成。
+      }
+
+      const created = await createDramaProject({
+        title: `《${novel.title || "未命名小说"}》切图短剧`,
+        source: "novel_import",
+        sourceRef: novel.id,
+        track,
+        targetEpisodes,
+      });
+      const projectId = created.data?.id;
+      if (!projectId) {
+        throw new Error("短剧项目创建成功，但没有返回项目编号。");
+      }
+      await startDramaPromptPackPipeline(projectId, getDramaLlmOptions());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.drama.projects });
+      toast.success("已开始从小说生成切图提示词包。");
+      navigate(`/drama/projects/${projectId}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "一键生成失败。");
+    } finally {
+      setSlideshowBusy(false);
     }
   };
 
@@ -314,15 +392,94 @@ export default function DramaWorkspacePage() {
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold tracking-normal">短剧工作台</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          从小说、原创灵感或导入文本整理短剧素材，再生成竖屏付费短剧策略和分集台本。
+          导入已有小说，一键生成切图提示词包（镜头画面提示词 + 台词）。也可继续用完整向导做策略与分集。
         </p>
       </div>
+
+      <Card className="rounded-lg border-primary/30 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="text-lg">从小说一键生成切图提示词包</CardTitle>
+          <CardDescription>
+            选择一本已有小说后点一次：系统会创建短剧项目，并自动整理素材、生成策略、分集、台本和分镜提示词，完成后可下载给外部模型出图。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px_160px]">
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">导入小说</span>
+              <SelectControl
+                className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+                value={slideshowForm.novelId}
+                disabled={novelsQuery.isLoading || novels.length === 0 || slideshowBusy}
+                onChange={(event) => {
+                  setSlideshowForm((current) => ({ ...current, novelId: event.target.value }));
+                }}
+              >
+                <option value="" disabled>
+                  {novelsQuery.isLoading ? "正在加载小说..." : novels.length > 0 ? "请选择小说" : "暂无可导入小说，请先去写小说"}
+                </option>
+                {novels.map((novel) => (
+                  <option key={novel.id} value={novel.id}>
+                    {novel.title || "未命名小说"}（{novel._count.chapters} 章）
+                  </option>
+                ))}
+              </SelectControl>
+            </label>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">生成集数</span>
+              <input
+                type="number"
+                min="1"
+                max="80"
+                className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+                value={slideshowForm.targetEpisodes}
+                disabled={slideshowBusy}
+                onChange={(event) => setSlideshowForm((current) => ({
+                  ...current,
+                  targetEpisodes: event.target.value,
+                }))}
+              />
+            </label>
+            <label className="block space-y-1.5 text-sm">
+              <span className="font-medium">赛道</span>
+              <SelectControl
+                className="h-11 w-full rounded-md border bg-background px-3 text-sm"
+                value={slideshowForm.track}
+                disabled={slideshowBusy}
+                onChange={(event) => setSlideshowForm((current) => ({
+                  ...current,
+                  track: event.target.value,
+                }))}
+              >
+                {DRAMA_TRACK_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </SelectControl>
+            </label>
+          </div>
+          {slideshowNovel ? (
+            <p className="text-sm text-muted-foreground">
+              将导入《{slideshowNovel.title || "未命名小说"}》（{slideshowNovel._count.chapters} 章）。
+              开始后会自动推荐更合适的赛道；你也可以先手动改赛道。
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            className="h-11 min-h-11 w-full sm:w-auto"
+            disabled={slideshowBusy || novels.length === 0}
+            onClick={() => void handleNovelPromptPackOneClick()}
+          >
+            <Sparkles className="h-4 w-4" />
+            {slideshowBusy ? "正在创建并生成…" : "导入小说并一键生成"}
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card className="rounded-lg">
           <CardHeader>
-            <CardTitle className="text-lg">新建短剧项目</CardTitle>
-            <CardDescription>按步骤选择来源、补充内容，再创建可进入短剧产线的项目。</CardDescription>
+            <CardTitle className="text-lg">完整新建向导</CardTitle>
+            <CardDescription>需要原创灵感、粘贴文本，或自定义更多规格时再用这里。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-3 gap-2">
@@ -526,7 +683,7 @@ export default function DramaWorkspacePage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold tracking-normal">项目</h2>
-              <p className="text-sm text-muted-foreground">先整理素材，再生成策略和分集。</p>
+              <p className="text-sm text-muted-foreground">已有项目可直接一键生成切图提示词包，或打开工作台细调。</p>
             </div>
             <Button
               type="button"
@@ -546,7 +703,7 @@ export default function DramaWorkspacePage() {
 
           {!projectsQuery.isLoading && projects.length === 0 ? (
             <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-              还没有短剧项目。先从左侧创建一个项目。
+              还没有短剧项目。用上方「从小说一键生成」即可开始。
             </div>
           ) : null}
 
@@ -557,11 +714,23 @@ export default function DramaWorkspacePage() {
                 project={project}
                 busyProjectId={busyProjectId}
                 onAssemble={(item) => void runProjectAction(item, assembleDramaSourceBundle, "短剧素材已整理。")}
-                onStrategy={(item) => void runProjectAction(item, generateDramaStrategy, "短剧策略已生成。")}
+                onStrategy={(item) => void runProjectAction(
+                  item,
+                  (projectId) => generateDramaStrategy(projectId, getDramaLlmOptions()),
+                  "短剧策略已生成。",
+                )}
                 onOutline={(item) => void runProjectAction(
                   item,
-                  (projectId) => generateDramaOutline(projectId, { startOrder: 1, count: 12 }),
+                  (projectId) => generateDramaOutline(projectId, { ...getDramaLlmOptions(), startOrder: 1, count: 12 }),
                   "前 12 集分集已生成。",
+                )}
+                onPromptPack={(item) => void runProjectAction(
+                  item,
+                  async (projectId) => {
+                    await startDramaPromptPackPipeline(projectId, getDramaLlmOptions());
+                    navigate(`/drama/projects/${projectId}`);
+                  },
+                  "已开始生成切图提示词包。",
                 )}
               />
             ))}
