@@ -156,7 +156,24 @@ docker stats
 
 推荐流程：**本机只编译打包**，再由你在本机终端上传、在云主机执行（避免 Agent/非交互环境卡在 SSH 密码）。
 
-本机 PowerShell：
+#### macOS / Linux（bash）
+
+```bash
+# 可选：复制并编辑连接配置（只影响打印出来的主机地址）
+cp infra/deploy/cloud-update.local.env.example infra/deploy/cloud-update.local.env
+
+# 默认：只编译打包，结束后打印 scp / ssh / 云主机命令
+bash infra/deploy/cloud-update.local.sh
+
+# 指定范围 / 不使用 Docker 缓存（仍只打包）
+bash infra/deploy/cloud-update.local.sh --server --client --no-cache
+bash infra/deploy/cloud-update.local.sh --all --no-cache
+
+# 若已配置 SSH 免密，或当前终端可交互输入密码，才用全自动：
+bash infra/deploy/cloud-update.local.sh --upload-and-remote --all --no-cache
+```
+
+#### Windows（PowerShell）
 
 ```powershell
 # 可选：复制并编辑连接配置（只影响打印出来的主机地址）
@@ -175,8 +192,8 @@ copy infra\deploy\cloud-update.local.env.example infra\deploy\cloud-update.local
 
 脚本结束会打印：
 
-1. 本机 `scp.exe` 上传更新包 / remote 脚本（必要时还有 `cloud.env`）
-2. `ssh.exe` 登录命令
+1. 本机 `scp` / `ssh` 上传更新包 / remote 脚本（必要时还有 `cloud.env`；Windows 打印为 `scp.exe` / `ssh.exe`）
+2. `ssh` 登录命令
 3. 云主机 `bash infra/deploy/cloud-update.remote.sh --package ...` 命令
 
 云主机脚本 **`cloud-update.remote.sh` 一般不用改**；它负责解包、备份库、重建并重启容器。
@@ -236,6 +253,7 @@ docker run -d \
 | `infra/deploy/api-entrypoint-sqlite.sh` | 启动前 schema 同步 |
 | `infra/nginx/ai-novel-cloud.conf` | `/` 静态 + `/api` 反代 + 访问门禁 |
 | `infra/deploy/create-site-htpasswd.sh` | 生成 `.htpasswd` |
-| `infra/deploy/cloud-update.local.ps1` | 本机增量编译打包上传 |
+| `infra/deploy/cloud-update.local.sh` | 本机增量编译打包上传（macOS / Linux） |
+| `infra/deploy/cloud-update.local.ps1` | 本机增量编译打包上传（Windows PowerShell） |
 | `infra/deploy/cloud-update.remote.sh` | 云端解包重建重启 |
 | `infra/deploy/cloud-update.local.env.example` | 本机云主机连接配置示例 |
