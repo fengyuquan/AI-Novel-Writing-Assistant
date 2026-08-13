@@ -11,7 +11,12 @@ import {
   generateDramaCharacterPortrait,
   prepareDramaCharacterSheet,
 } from "@/api/drama";
-import { getAPIKeySettings } from "@/api/settings";
+import { getAPIKeySettings, getImageSelectionSetting } from "@/api/settings";
+import { queryKeys } from "@/api/queryKeys";
+import {
+  isImageCapableProvider,
+  resolvePreferredImageSelection,
+} from "@/lib/imageSelection";
 import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
@@ -107,24 +112,31 @@ function CharacterImagesBlock(props: {
   const imageFlow = useImageGenerationFlow();
 
   const apiKeyQuery = useQuery({
-    queryKey: ["api-key-settings"],
+    queryKey: queryKeys.settings.apiKeys,
     queryFn: getAPIKeySettings,
+    staleTime: 60_000,
+  });
+  const imageSelectionQuery = useQuery({
+    queryKey: queryKeys.settings.imageSelection,
+    queryFn: getImageSelectionSetting,
     staleTime: 60_000,
   });
 
   const imageProviders = useMemo(
-    () =>
-      (apiKeyQuery.data?.data ?? []).filter(
-        (item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel,
-      ),
+    () => (apiKeyQuery.data?.data ?? []).filter(isImageCapableProvider),
     [apiKeyQuery.data?.data],
+  );
+  const preferredImage = useMemo(
+    () => resolvePreferredImageSelection(imageSelectionQuery.data?.data, apiKeyQuery.data?.data ?? []),
+    [imageSelectionQuery.data?.data, apiKeyQuery.data?.data],
   );
 
   useEffect(() => {
-    if (imageProviders.length > 0 && !selectedProvider) {
-      setSelectedProvider(imageProviders[0]!.provider);
-    }
-  }, [imageProviders, selectedProvider]);
+    if (imageProviders.length === 0) return;
+    const stillValid = selectedProvider && imageProviders.some((item) => item.provider === selectedProvider);
+    if (stillValid) return;
+    setSelectedProvider(preferredImage?.provider ?? imageProviders[0]!.provider);
+  }, [imageProviders, preferredImage?.provider, selectedProvider]);
 
   useEffect(() => {
     setSheet(parsePortrait(props.character.portraitData));
@@ -185,7 +197,11 @@ function CharacterImagesBlock(props: {
           >
             {imageProviders.map((item) => (
               <option key={item.provider} value={item.provider}>
-                {item.name} · {item.currentImageModel}
+                {item.name} · {(
+                  preferredImage?.provider === item.provider
+                    ? preferredImage.model
+                    : item.currentImageModel
+                ) || item.currentImageModel || "未设置"}
               </option>
             ))}
           </SelectControl>

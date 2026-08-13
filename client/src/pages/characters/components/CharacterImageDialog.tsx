@@ -6,14 +6,13 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { BaseCharacter } from "@ai-novel/shared/types/novel";
-import {
-  generateCharacterImages,
-  getImageTask,
-  optimizeCharacterImagePrompt,
-  type ImagePromptOutputLanguage,
-} from "@/api/images";
-import { getAPIKeySettings } from "@/api/settings";
+import { generateCharacterImages, getImageTask, optimizeCharacterImagePrompt, type ImagePromptOutputLanguage } from "@/api/images";
+import { getAPIKeySettings, getImageSelectionSetting } from "@/api/settings";
 import { queryKeys } from "@/api/queryKeys";
+import {
+  isImageCapableProvider,
+  resolvePreferredImageSelection,
+} from "@/lib/imageSelection";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import SelectControl from "@/components/common/SelectControl";
@@ -61,16 +60,28 @@ export function CharacterImageDialog({
     queryFn: getAPIKeySettings,
     enabled: open,
   });
+  const imageSelectionQuery = useQuery({
+    queryKey: queryKeys.settings.imageSelection,
+    queryFn: getImageSelectionSetting,
+    enabled: open,
+  });
 
   const imageProviderOptions = useMemo(
     () => (apiKeySettingsQuery.data?.data ?? [])
-      .filter((item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel)
+      .filter(isImageCapableProvider)
       .map((item) => ({
         provider: item.provider,
         name: item.name,
         imageModel: item.currentImageModel ?? "",
       })),
     [apiKeySettingsQuery.data?.data],
+  );
+  const preferredImage = useMemo(
+    () => resolvePreferredImageSelection(
+      imageSelectionQuery.data?.data,
+      apiKeySettingsQuery.data?.data ?? [],
+    ),
+    [imageSelectionQuery.data?.data, apiKeySettingsQuery.data?.data],
   );
 
   useEffect(() => {
@@ -95,14 +106,22 @@ export function CharacterImageDialog({
       }
       return;
     }
+    const preferredProvider = preferredImage?.provider;
+    const preferredStillAvailable = preferredProvider
+      ? imageProviderOptions.some((item) => item.provider === preferredProvider)
+      : false;
     const currentStillAvailable = imageProviderOptions.some((item) => item.provider === imageForm.provider);
     if (!currentStillAvailable) {
       setImageForm((prev) => ({
         ...prev,
-        provider: imageProviderOptions[0]?.provider ?? "",
+        provider: (preferredStillAvailable ? preferredProvider : imageProviderOptions[0]?.provider) ?? "",
       }));
+      return;
     }
-  }, [imageForm.provider, imageProviderOptions, open]);
+    if (!imageForm.provider && preferredStillAvailable && preferredProvider) {
+      setImageForm((prev) => ({ ...prev, provider: preferredProvider }));
+    }
+  }, [imageForm.provider, imageProviderOptions, open, preferredImage?.provider]);
 
   const originalPromptPreview = useMemo(() => {
     if (!character) {
@@ -216,6 +235,7 @@ export function CharacterImageDialog({
         stylePreset: imageForm.stylePreset,
         negativePrompt: imageForm.negativePrompt,
         provider: imageForm.provider,
+        model: preferredImage?.provider === imageForm.provider ? preferredImage.model : undefined,
         size: imageForm.size,
         count: imageForm.count,
       });
@@ -367,7 +387,11 @@ export function CharacterImageDialog({
                 ) : null}
                 {imageProviderOptions.map((item) => (
                   <option key={item.provider} value={item.provider}>
-                    {item.name} · {item.imageModel}
+                    {item.name} · {(
+                      preferredImage?.provider === item.provider
+                        ? preferredImage.model
+                        : item.imageModel
+                    ) || item.imageModel || "未设置"}
                   </option>
                 ))}
               </SelectControl>

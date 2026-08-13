@@ -70,6 +70,25 @@ export function useBookAnalysisWorkspace(): BookAnalysisWorkspace {
     maxTokens: llmStore.maxTokens,
   });
 
+  useEffect(() => {
+    // 顶部模型水合完成后，若本地尚未选中，优先跟随顶部当前选择
+    if (llmConfig.provider || !llmStore.provider) {
+      return;
+    }
+    setLlmConfig({
+      provider: llmStore.provider,
+      model: llmStore.model,
+      temperature: llmStore.temperature,
+      maxTokens: llmStore.maxTokens,
+    });
+  }, [
+    llmConfig.provider,
+    llmStore.maxTokens,
+    llmStore.model,
+    llmStore.provider,
+    llmStore.temperature,
+  ]);
+
   const listKey = useMemo(
     () => `${keyword.trim()}-${status || "all"}`,
     [keyword, status],

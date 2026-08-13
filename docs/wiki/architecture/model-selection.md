@@ -32,6 +32,8 @@
 - 文本类漫画任务（大纲、分镜脚本等）不走图片默认，继续使用顶部文本模型 / `llm.currentSelection`。
 - 出图 runtime（`runImageGeneration`）解析模型顺序：请求显式 `model` / `modelOverride` → 全局 `image.currentSelection`（仅当 provider 一致）→ 厂商 `provider.imageModel.*` 默认。
 - 「刷新模型」会调用 `/settings/api-keys/:provider/refresh-models`：刷新文本模型目录，同时从目录中筛出疑似图像模型，写入 `provider.imageModelCatalog.{provider}`，并回填到设置页 / 漫画页的图像模型下拉。
+- 所有带独立供应商/模型下拉的出图入口（短剧关键帧与角色设计稿、角色库生图、小说封面、统一生图确认弹窗）打开时都必须优先读取 `image.currentSelection`；仅当全局选择不可用时，才回退到首个可出图供应商。
+- 拆书创建等带本地 LLM 选择器的文本入口，在本地尚未选中时优先跟随顶部 `llm.currentSelection` / `useLLMStore`，避免水合前落到空值或首个厂商。
 
 ## 示例
 
@@ -68,7 +70,12 @@
 - `client/src/components/common/LLMSelector.tsx`
 - `client/src/store/llmStore.ts`
 - `client/src/lib/providerModelsCache.ts`
-- `client/src/components/layout/mobile/MobileLLMHeaderBar.tsx`
+- `client/src/lib/imageSelection.ts`（`resolvePreferredImageSelection`）
+- `client/src/pages/drama/components/DramaVisualPanel.tsx`
+- `client/src/pages/drama/components/DramaCharactersPanel.tsx`
+- `client/src/pages/characters/components/CharacterImageDialog.tsx`
+- `client/src/pages/novels/components/cover/NovelCoverDialog.tsx`
+- `client/src/components/image/ImageGenerationConfirmDialog.tsx`
 
 ## 来源文档
 

@@ -17,7 +17,12 @@ import {
   type DramaVideoProvider,
 } from "@/api/drama";
 import type { ImageGenerationOverrides } from "@/api/comic";
-import { getAPIKeySettings } from "@/api/settings";
+import { getAPIKeySettings, getImageSelectionSetting } from "@/api/settings";
+import { queryKeys } from "@/api/queryKeys";
+import {
+  isImageCapableProvider,
+  resolvePreferredImageSelection,
+} from "@/lib/imageSelection";
 import { ImageCandidateSelectionDialog } from "@/components/image/ImageCandidateSelectionDialog";
 import { ImageGenerationConfirmDialog } from "@/components/image/ImageGenerationConfirmDialog";
 import { useImageGenerationFlow } from "@/components/image/useImageGenerationFlow";
@@ -55,25 +60,33 @@ export function DramaVisualPanel(props: {
   const [useCharacterRefImages, setUseCharacterRefImages] = useState(false);
   const keyframeFlow = useImageGenerationFlow();
   const apiKeyQuery = useQuery({
-    queryKey: ["api-key-settings"],
+    queryKey: queryKeys.settings.apiKeys,
     queryFn: getAPIKeySettings,
     staleTime: 60_000,
   });
+  const imageSelectionQuery = useQuery({
+    queryKey: queryKeys.settings.imageSelection,
+    queryFn: getImageSelectionSetting,
+    staleTime: 60_000,
+  });
   const imageProviders = useMemo(
-    () =>
-      (apiKeyQuery.data?.data ?? []).filter(
-        (item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel,
-      ),
+    () => (apiKeyQuery.data?.data ?? []).filter(isImageCapableProvider),
     [apiKeyQuery.data?.data],
   );
+  const preferredImage = useMemo(
+    () => resolvePreferredImageSelection(imageSelectionQuery.data?.data, apiKeyQuery.data?.data ?? []),
+    [imageSelectionQuery.data?.data, apiKeyQuery.data?.data],
+  );
   useEffect(() => {
-    if (imageProviders.length > 0 && !selectedImageProvider) {
-      setSelectedImageProvider(imageProviders[0]!.provider);
-    }
-  }, [imageProviders, selectedImageProvider]);
+    if (imageProviders.length === 0) return;
+    const stillValid = selectedImageProvider
+      && imageProviders.some((provider) => provider.provider === selectedImageProvider);
+    if (stillValid) return;
+    setSelectedImageProvider(preferredImage?.provider ?? imageProviders[0]!.provider);
+  }, [imageProviders, preferredImage?.provider, selectedImageProvider]);
   const activeImageProvider = imageProviders.some((provider) => provider.provider === selectedImageProvider)
     ? selectedImageProvider
-    : imageProviders[0]?.provider ?? "";
+    : preferredImage?.provider ?? imageProviders[0]?.provider ?? "";
   const promptStats = {
     prompted: activeVideoPrompts.length,
     withTask: activeVideoPrompts.filter((prompt) => Boolean(prompt.providerTaskId)).length,
@@ -202,7 +215,11 @@ export function DramaVisualPanel(props: {
           >
             {imageProviders.length > 0 ? imageProviders.map((provider) => (
               <option key={provider.provider} value={provider.provider}>
-                {provider.name} · {provider.currentImageModel}
+                {provider.name} · {(
+                  preferredImage?.provider === provider.provider
+                    ? preferredImage.model
+                    : provider.currentImageModel
+                ) || provider.currentImageModel || "未设置"}
               </option>
             )) : (
               <option value="">未配置图片 Provider</option>

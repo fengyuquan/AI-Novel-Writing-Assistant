@@ -22,7 +22,11 @@ import {
   type NovelCoverPromptMode,
 } from "@/api/images";
 import { queryKeys } from "@/api/queryKeys";
-import { getAPIKeySettings } from "@/api/settings";
+import { getAPIKeySettings, getImageSelectionSetting } from "@/api/settings";
+import {
+  isImageCapableProvider,
+  resolvePreferredImageSelection,
+} from "@/lib/imageSelection";
 import SelectControl from "@/components/common/SelectControl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -120,16 +124,28 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
     queryFn: getAPIKeySettings,
     enabled: props.open,
   });
+  const imageSelectionQuery = useQuery({
+    queryKey: queryKeys.settings.imageSelection,
+    queryFn: getImageSelectionSetting,
+    enabled: props.open,
+  });
 
   const imageProviderOptions = useMemo(
     () => (apiKeySettingsQuery.data?.data ?? [])
-      .filter((item) => item.isActive && item.isConfigured && item.supportsImageGeneration && item.currentImageModel)
+      .filter(isImageCapableProvider)
       .map((item) => ({
         provider: item.provider,
         name: item.name,
         imageModel: item.currentImageModel ?? "",
       })),
     [apiKeySettingsQuery.data?.data],
+  );
+  const preferredImage = useMemo(
+    () => resolvePreferredImageSelection(
+      imageSelectionQuery.data?.data,
+      apiKeySettingsQuery.data?.data ?? [],
+    ),
+    [imageSelectionQuery.data?.data, apiKeySettingsQuery.data?.data],
   );
 
   const assetsQuery = useQuery({
@@ -166,14 +182,22 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
       }
       return;
     }
+    const preferredProvider = preferredImage?.provider;
+    const preferredStillAvailable = preferredProvider
+      ? imageProviderOptions.some((item) => item.provider === preferredProvider)
+      : false;
     const currentStillAvailable = imageProviderOptions.some((item) => item.provider === imageForm.provider);
     if (!currentStillAvailable) {
       setImageForm((prev) => ({
         ...prev,
-        provider: imageProviderOptions[0]?.provider ?? "",
+        provider: (preferredStillAvailable ? preferredProvider : imageProviderOptions[0]?.provider) ?? "",
       }));
+      return;
     }
-  }, [imageForm.provider, imageProviderOptions, props.open]);
+    if (!imageForm.provider && preferredStillAvailable && preferredProvider) {
+      setImageForm((prev) => ({ ...prev, provider: preferredProvider }));
+    }
+  }, [imageForm.provider, imageProviderOptions, preferredImage?.provider, props.open]);
 
   const originalPromptPreview = useMemo(
     () => buildNovelCoverImagePrompt({
@@ -277,6 +301,7 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
         stylePreset: imageForm.stylePreset,
         negativePrompt: imageForm.negativePrompt,
         provider: imageForm.provider,
+        model: preferredImage?.provider === imageForm.provider ? preferredImage.model : undefined,
         size: imageForm.size,
         count: imageForm.count,
       });
@@ -540,7 +565,11 @@ export function NovelCoverDialog(props: NovelCoverDialogProps) {
                 ) : null}
                 {imageProviderOptions.map((item) => (
                   <option key={item.provider} value={item.provider}>
-                    {item.name} · {item.imageModel}
+                    {item.name} · {(
+                      preferredImage?.provider === item.provider
+                        ? preferredImage.model
+                        : item.imageModel
+                    ) || item.imageModel || "未设置"}
                   </option>
                 ))}
               </SelectControl>

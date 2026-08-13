@@ -17,6 +17,7 @@ import {
   isImageCapableProvider,
   listImageModelsForProvider,
   resolveDefaultImageModel,
+  resolvePreferredImageSelection,
 } from "@/lib/imageSelection";
 import type { ImageGenerationOverrides, ImageGenerationPreview } from "@/api/comic";
 import { assistImageGenerationPrompt, resolveImageAssetUrl, type ImagePromptAssistResult } from "@/api/images";
@@ -103,24 +104,21 @@ export function ImageGenerationConfirmDialog({
   const [promptAssistResult, setPromptAssistResult] = useState<ImagePromptAssistResult | null>(null);
   const [promptAssistError, setPromptAssistError] = useState("");
 
-  // 弹窗重新打开或 preview 变更时，重置编辑态为预览默认值
+  // 弹窗重新打开或 preview 变更时，重置编辑态；供应商/模型优先跟顶部默认图片选择
   useEffect(() => {
-    if (preview) {
-      const included = preview.referenceImages.map((ref) => ref.url);
-      const taskKind = resolveComicImageTaskKind(preview.kind);
-      setPrompt(applyComicTextToImageTaskLead(preview.prompt, taskKind, included.length > 0));
-      setNegativePrompt(preview.negativePrompt ?? "");
-      setOptimizationInstruction("");
-      setIncludedReferenceImageUrls(included);
-      setProvider(preview.provider);
-      setModel(preview.model ?? "");
-      setSize(preview.size);
-      setCount(1);
-      setPromptAssistAction(null);
-      setPromptAssistLoading(null);
-      setPromptAssistResult(null);
-      setPromptAssistError("");
-    }
+    if (!preview) return;
+    const included = preview.referenceImages.map((ref) => ref.url);
+    const taskKind = resolveComicImageTaskKind(preview.kind);
+    setPrompt(applyComicTextToImageTaskLead(preview.prompt, taskKind, included.length > 0));
+    setNegativePrompt(preview.negativePrompt ?? "");
+    setOptimizationInstruction("");
+    setIncludedReferenceImageUrls(included);
+    setSize(preview.size);
+    setCount(1);
+    setPromptAssistAction(null);
+    setPromptAssistLoading(null);
+    setPromptAssistResult(null);
+    setPromptAssistError("");
   }, [preview]);
 
   const { data: imageProviders = [] } = useQuery({
@@ -134,6 +132,21 @@ export function ImageGenerationConfirmDialog({
     queryFn: getImageSelectionSetting,
     select: (res) => res.data,
   });
+
+  useEffect(() => {
+    if (!open || !preview) return;
+    const preferred = resolvePreferredImageSelection(imageSelection, imageProviders);
+    const nextProvider = preferred?.provider ?? preview.provider;
+    const providerMeta = imageProviders.find((item) => item.provider === nextProvider);
+    const nextModel = resolveDefaultImageModel(
+      providerMeta,
+      preferred?.provider === nextProvider
+        ? preferred.model
+        : (preview.model ?? undefined),
+    ) || preview.model || "";
+    setProvider(nextProvider);
+    setModel(nextModel);
+  }, [open, preview, imageSelection, imageProviders]);
 
   const providerChoices = useMemo(() => {
     const options = imageProviders.map((p) => ({
@@ -152,16 +165,6 @@ export function ImageGenerationConfirmDialog({
     if (preview?.model && !options.includes(preview.model)) options.unshift(preview.model);
     return options;
   }, [selectedProviderMeta, model, preview?.model]);
-
-  useEffect(() => {
-    if (!open || !provider) return;
-    if (model) return;
-    const preferred =
-      preview?.model
-      || (imageSelection?.provider === provider ? imageSelection.model : undefined);
-    const next = resolveDefaultImageModel(selectedProviderMeta, preferred);
-    if (next) setModel(next);
-  }, [open, provider, model, preview?.model, imageSelection, selectedProviderMeta]);
 
   // size 也保证当前值在列表里
   const sizeChoices = useMemo(() => {
