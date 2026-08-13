@@ -49,6 +49,7 @@ function parseImageData(
   version?: number;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   selectionId?: string;
   selectedIndex?: number;
@@ -669,7 +670,9 @@ function PanelDetailDialog({
                   />
                   {imageData.provider && (
                     <div className="mt-1 text-[11px] text-muted-foreground">
-                      模型：{imageData.provider}{imageData.generatedAt ? ` · 生成于 ${new Date(imageData.generatedAt).toLocaleString("zh-CN")}` : ""}
+                      供应商：{imageData.provider}
+                      {imageData.model ? ` · 模型：${imageData.model}` : ""}
+                      {imageData.generatedAt ? ` · 生成于 ${new Date(imageData.generatedAt).toLocaleString("zh-CN")}` : ""}
                     </div>
                   )}
                 </>

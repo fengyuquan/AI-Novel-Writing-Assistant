@@ -276,6 +276,7 @@ export async function runImageGeneration<TState extends GeneratedImageState>(
       version: nextVersion,
       prompt: opts.prompt,
       provider,
+      model,
       generatedAt: new Date().toISOString(),
       history: nextHistory,
       ...(opts.referenceImages && opts.referenceImages.length > 0 ? { referenceImages: opts.referenceImages } : {}),

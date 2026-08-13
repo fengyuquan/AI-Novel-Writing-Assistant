@@ -482,7 +482,7 @@ export default function ComicProjectPage() {
               {formatDef.tag}
             </span>
           )}
-          {/* 默认图片模型（与系统设置同步） */}
+          {/* 默认图片模型（与系统设置同步）；单次生图可在确认弹窗里改供应商与模型 */}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <label
               className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs text-foreground"

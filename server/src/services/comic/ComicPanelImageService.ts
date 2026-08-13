@@ -43,6 +43,7 @@ export interface PanelImageData {
   url?: string;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   error?: string;
   origin?: "generated" | "uploaded";

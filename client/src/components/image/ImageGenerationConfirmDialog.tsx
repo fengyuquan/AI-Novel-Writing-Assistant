@@ -788,7 +788,7 @@ export function ImageGenerationConfirmDialog({
                   disabled={submitting || !!promptAssistLoading || modelChoices.length === 0}
                 >
                   {modelChoices.length === 0 ? (
-                    <option value="">请先选择供应商</option>
+                    <option value="">请先选择图片供应商</option>
                   ) : (
                     modelChoices.map((item) => (
                       <option key={item} value={item}>{item}</option>

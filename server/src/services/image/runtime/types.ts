@@ -40,6 +40,8 @@ export interface GeneratedImageState {
   url?: string;
   prompt?: string;
   provider?: string;
+  /** 本次实际调用的图片模型 id（可选，便于溯源） */
+  model?: string;
   generatedAt?: string;
   error?: string;
   origin?: "generated" | "uploaded";
@@ -130,7 +132,7 @@ export interface ImageGenerationPreview {
   referenceImages: GeneratedReferenceImageMeta[];
   /** 默认 provider；用户可在弹窗里改 */
   provider: string;
-  /** 默认图像模型；用户可在弹窗里改 */
+  /** 默认图像模型；用户可在弹窗里改成该供应商下的其他模型 */
   model?: string;
   /** 默认 size；用户可在弹窗里改 */
   size: ImageSize;
@@ -149,6 +151,7 @@ export interface ImageGenerationPreview {
 export interface ImageGenerationOverrides {
   promptOverride?: string;
   providerOverride?: string;
+  /** 临时指定该供应商下的具体图片模型 */
   modelOverride?: string;
   sizeOverride?: ImageSize;
   negativePromptOverride?: string;

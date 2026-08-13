@@ -42,6 +42,7 @@ export interface CharacterSheetData {
   url?: string;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   error?: string;
   origin?: "generated" | "uploaded";
@@ -67,6 +68,7 @@ export interface CharacterExpressionData {
   url?: string;
   prompt?: string;
   provider?: string;
+  model?: string;
   generatedAt?: string;
   error?: string;
   referenceImages?: import("../image/runtime").GeneratedReferenceImageMeta[];
