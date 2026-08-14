@@ -92,6 +92,14 @@ const generateScriptSchema = z
   })
   .optional();
 
+const applyManualScriptSchema = z.object({
+  rawText: z.string().trim().min(1).max(500_000),
+  targetPanelCount: z.number().int().min(10).max(80).optional(),
+  densityMode: z.enum(["relaxed", "balanced", "compact"]).optional(),
+  scriptPromptInstruction: z.string().trim().max(1000).optional(),
+  refreshSourceText: z.boolean().optional(),
+});
+
 const visualPromptSchema = z.object({
   visualPrompt: z.string().trim().min(1).max(400),
 });
@@ -306,6 +314,34 @@ router.post(
         scriptInput,
         provider as Parameters<typeof comicPanelScriptService.generatePanelScript>[2],
       );
+      res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (err) { next(err); }
+  },
+);
+
+router.post(
+  "/episodes/:episodeId/prepare-script",
+  validate({ params: episodeIdParams, body: generateScriptSchema }),
+  async (req, res, next) => {
+    try {
+      const { episodeId } = req.params as z.infer<typeof episodeIdParams>;
+      const body = (req.body ?? {}) as z.infer<typeof generateScriptSchema>;
+      const { provider: _provider, ...scriptInput } = body ?? {};
+      const data = await comicPanelScriptService.preparePanelScript(episodeId, scriptInput);
+      res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (err) { next(err); }
+  },
+);
+
+router.post(
+  "/episodes/:episodeId/apply-manual-script",
+  validate({ params: episodeIdParams, body: applyManualScriptSchema }),
+  async (req, res, next) => {
+    try {
+      const { episodeId } = req.params as z.infer<typeof episodeIdParams>;
+      const body = req.body as z.infer<typeof applyManualScriptSchema>;
+      const { rawText, ...scriptInput } = body;
+      const data = await comicPanelScriptService.applyManualPanelScript(episodeId, rawText, scriptInput);
       res.json({ success: true, data } satisfies ApiResponse<typeof data>);
     } catch (err) { next(err); }
   },

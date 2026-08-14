@@ -13,6 +13,11 @@
 - 生成前控制：用户选择信息密度，并可填写本次分格补充要求。补充要求只影响表达偏好，不覆盖 schema、角色引用、画风锁定、跨话事实和输出字段。
 - 生成后微调：用户可以编辑单格 `visualPrompt` 对应的画面脚本。下一次生图会使用保存后的画面脚本，但角色外貌锚点、表情引用、画风和对白气泡仍由后端统一组装。
 
+另外支持「分格方式：自动 / 人工」：
+
+- 自动：走本系统文本模型 `generate-script`。
+- 人工：`prepare-script` 导出与自动路径同一套 PromptAsset messages，用户复制到外部模型；再把 JSON 粘贴到 `apply-manual-script` 落库。解析使用 `extractJSONValue` + `comicPanelScriptOutputSchema`，不另写关键词路由。人工模式下「一键生成分格」禁用，需按话操作。
+
 图片 provider 的最终 prompt 保存到 `ComicPanel.imageData.prompt`，在界面中作为“上次发送给图像模型的 Prompt”展示。它是审查记录，不是用户直接编辑的主入口。
 
 ## Current Rule
@@ -31,7 +36,7 @@
 
 分格提示词控制会把生成时的整话配置和单格结构化结果落库，便于后续审查、重生图和排查提示词效果。
 
-- `ComicEpisode.scriptConfig` 保存本次分格脚本生成配置，包括 `densityMode`、`targetPanelCount`、`comicFormat`、`scriptPromptInstruction`、`promptAssetId`、`promptAssetVersion`、`provider` 和 `generatedAt`。它记录“这次脚本是按什么控制项生成的”，不是新的自由 prompt 入口。
+- `ComicEpisode.scriptConfig` 保存本次分格脚本生成配置，包括 `densityMode`、`targetPanelCount`、`comicFormat`、`scriptPromptInstruction`、`promptAssetId`、`promptAssetVersion`、`provider`、`source`（`auto` / `manual_paste`）和 `generatedAt`。它记录“这次脚本是按什么控制项生成的”，不是新的自由 prompt 入口。
 - `ComicPanel.densityLevel` 保存 LLM 对单格信息密度的结构化判断，取值为 `low / medium / high`。`densityMode` 控制整话倾向，`densityLevel` 记录单格结果，二者不能混用。
 - `ComicPanel.focus` 保存单格主视觉焦点，用于帮助用户审查画面是否聚焦，也为后续重抽和导出提供稳定摘要。
 - `ComicPanel.layoutData` 保存结构化版式信息；四格模式下可记录 `four_koma` 与 `subPanels`，避免只靠一段 `visualPrompt` 承载四格起承转合。

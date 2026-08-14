@@ -316,8 +316,8 @@ export function ImageGenerationConfirmDialog({
   };
 
   const footer = preview ? (
-    <div className="flex w-full items-center justify-between gap-3">
-      <p className="text-[11px] text-muted-foreground">
+    <div className="flex w-full flex-col gap-1.5 sm:gap-2">
+      <p className="hidden text-[11px] leading-relaxed text-muted-foreground sm:block">
         {manualMode
           ? supportsManualUpload
             ? "复制提示词 → 外部 API 出图 → 粘贴/上传结果继续"
@@ -326,8 +326,8 @@ export function ImageGenerationConfirmDialog({
             ? "本次将使用上方修改后的参数生图（仅一次性，不保存到角色）"
             : "点击「开始生图」按当前参数生成"}
       </p>
-      <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={submitting}>
+      <div className="flex w-full flex-wrap items-center justify-end gap-1 sm:gap-1.5">
+        <Button type="button" size="sm" variant="outline" className="h-7 min-w-14 px-2 sm:h-8 sm:min-w-16 sm:px-2.5" onClick={onCancel} disabled={submitting}>
           取消
         </Button>
         {manualMode ? (
@@ -336,6 +336,7 @@ export function ImageGenerationConfirmDialog({
               type="button"
               size="sm"
               variant="outline"
+              className="h-7 px-2 sm:h-8 sm:px-2.5"
               disabled={submitting || !prompt.trim()}
               onClick={(event) => {
                 event.preventDefault();
@@ -344,32 +345,34 @@ export function ImageGenerationConfirmDialog({
               }}
             >
               <Copy className="h-3.5 w-3.5" />
-              复制提示词
+              复制
             </Button>
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="h-7 px-2 sm:h-8 sm:px-2.5"
               disabled={submitting || !supportsManualUpload}
               onClick={() => void pasteManualImage()}
             >
               <ClipboardPaste className="h-3.5 w-3.5" />
-              粘贴结果
+              粘贴
             </Button>
             <Button
               type="button"
               size="sm"
+              className="h-7 px-2 sm:h-8 sm:px-2.5"
               disabled={submitting || !supportsManualUpload}
               onClick={() => fileInputRef.current?.click()}
             >
               {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              {submitting ? "上传中..." : "上传结果"}
+              {submitting ? "上传中" : "上传"}
             </Button>
           </>
         ) : (
-          <Button type="button" size="sm" onClick={handleConfirm} disabled={submitting || !prompt.trim()}>
+          <Button type="button" size="sm" className="h-7 min-w-20 px-2 sm:h-8 sm:min-w-24 sm:px-2.5" onClick={handleConfirm} disabled={submitting || !prompt.trim()}>
             {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {submitting ? "生成中..." : "开始生图"}
+            {submitting ? "生成中" : "开始生图"}
           </Button>
         )}
       </div>
@@ -382,6 +385,9 @@ export function ImageGenerationConfirmDialog({
         title={manualMode ? "人工干预生图" : "生图前确认"}
         description={preview?.title}
         footer={footer}
+        footerClassName="px-3 py-2 sm:px-6 sm:py-3"
+        headerClassName="px-3 py-3 pr-10 sm:px-6 sm:py-4 sm:pr-12"
+        bodyClassName="px-3 py-3 sm:px-6 sm:py-4"
         className="max-w-3xl"
         onPointerDownOutside={(e) => e.preventDefault()}
       >

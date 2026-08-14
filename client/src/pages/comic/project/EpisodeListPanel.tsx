@@ -1,21 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BookOpen, Check, FileText, Layers, Loader2, Pencil, Sparkles, SquareStack, X } from "lucide-react";
 import {
+  applyManualComicPanelScript,
   generateComicOutline,
   generateComicPanelScript,
   importComicSourceBundle,
   listComicEpisodes,
+  prepareComicPanelScript,
   updateComicEpisode,
   type ComicCharacter,
   type ComicEpisode,
   type ComicProject,
   type GenerateScriptPayload,
+  type PanelScriptPreparePreview,
 } from "@/api/comic";
+import { ScriptGenerationConfirmDialog } from "@/components/comic/ScriptGenerationConfirmDialog";
+import SelectControl from "@/components/common/SelectControl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
+import {
+  isManualScriptInterventionEnabled,
+  setManualScriptInterventionEnabled,
+  subscribeManualScriptIntervention,
+} from "@/lib/manualScriptIntervention";
 
 type DensityMode = NonNullable<GenerateScriptPayload["densityMode"]>;
 
@@ -297,6 +307,13 @@ export function EpisodeListPanel({
 }) {
   const queryClient = useQueryClient();
   const [busyEpId, setBusyEpId] = useState("");
+  const [manualScriptMode, setManualScriptMode] = useState(() => isManualScriptInterventionEnabled());
+  const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
+  const [scriptPreview, setScriptPreview] = useState<PanelScriptPreparePreview | null>(null);
+  const [scriptPreviewLoading, setScriptPreviewLoading] = useState(false);
+  const [scriptApplySubmitting, setScriptApplySubmitting] = useState(false);
+  const [pendingManualEpisodeId, setPendingManualEpisodeId] = useState("");
+  const [pendingManualPayload, setPendingManualPayload] = useState<GenerateScriptPayload | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [densityMode, setDensityMode] = useState<DensityMode>("balanced");
   const [showPromptSettings, setShowPromptSettings] = useState(false);
@@ -306,6 +323,8 @@ export function EpisodeListPanel({
     queryKey: ["comic", "episodes", projectId],
     queryFn: () => listComicEpisodes(projectId),
   });
+
+  useEffect(() => subscribeManualScriptIntervention(setManualScriptMode), []);
 
   const format = parsePresetFormat(project.stylePreset);
   const targetPanelCount = resolveTargetPanelCount(densityMode, format);
@@ -404,18 +423,82 @@ export function EpisodeListPanel({
     outlineMut.mutate({ startOrder: nextOutlineStart, count: 12 });
   };
 
+  const closeScriptDialog = () => {
+    if (scriptApplySubmitting) return;
+    setScriptDialogOpen(false);
+    setScriptPreview(null);
+    setScriptPreviewLoading(false);
+    setPendingManualEpisodeId("");
+    setPendingManualPayload(null);
+    setBusyEpId("");
+  };
+
+  const startManualScriptFlow = async (episode: ComicEpisode, payload: GenerateScriptPayload) => {
+    setPendingManualEpisodeId(episode.id);
+    setPendingManualPayload(payload);
+    setBusyEpId(episode.id);
+    setScriptDialogOpen(true);
+    setScriptPreview(null);
+    setScriptPreviewLoading(true);
+    try {
+      const preview = await prepareComicPanelScript(episode.id, payload);
+      setScriptPreview(preview);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      setScriptDialogOpen(false);
+      setPendingManualEpisodeId("");
+      setPendingManualPayload(null);
+      setBusyEpId("");
+    } finally {
+      setScriptPreviewLoading(false);
+    }
+  };
+
+  const applyManualScript = async (rawText: string) => {
+    if (!pendingManualEpisodeId || !pendingManualPayload) return;
+    setScriptApplySubmitting(true);
+    try {
+      const ep = await applyManualComicPanelScript(pendingManualEpisodeId, {
+        ...pendingManualPayload,
+        rawText,
+      });
+      queryClient.invalidateQueries({ queryKey: ["comic", "episodes", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["comic", "panels", ep?.id] });
+      queryClient.invalidateQueries({ queryKey: ["comic", "scenes", projectId] });
+      toast.success(`第 ${ep?.order ?? "?"} 话脚本已写入`);
+      setScriptDialogOpen(false);
+      setScriptPreview(null);
+      setPendingManualEpisodeId("");
+      setPendingManualPayload(null);
+      setBusyEpId("");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setScriptApplySubmitting(false);
+    }
+  };
+
   const generateScript = (episode: ComicEpisode) => {
     if (episodeHasPanels(episode)) {
       const ok = window.confirm("重新生成会替换本话已有格子脚本，并影响后续批量生图。继续生成吗？");
       if (!ok) return;
     }
+    const payload = buildScriptPayload(densityMode, targetPanelCount, scriptPromptInstruction);
+    if (manualScriptMode) {
+      void startManualScriptFlow(episode, payload);
+      return;
+    }
     scriptMut.mutate({
       episodeId: episode.id,
-      payload: buildScriptPayload(densityMode, targetPanelCount, scriptPromptInstruction),
+      payload,
     });
   };
 
   const requestBatchGenerateScripts = () => {
+    if (manualScriptMode) {
+      toast.message("人工分格模式下请按话操作：打开某一话，复制提示词并粘贴结果。");
+      return;
+    }
     if (outlinedEpisodes.length === 0) {
       toast.error("请先生成分话大纲");
       return;
@@ -428,21 +511,24 @@ export function EpisodeListPanel({
         + "一键重新生成会替换全部已有格子，并影响后续出图。确认继续吗？",
       );
       if (!ok) return;
-      targets = outlinedEpisodes;
-    } else {
-      const skipHint = scriptedEpisodes.length > 0
-        ? `\n已有分格的 ${scriptedEpisodes.length} 话会自动跳过。`
-        : "";
+      targets = scriptedEpisodes;
+    } else if (scriptedEpisodes.length > 0) {
       const ok = window.confirm(
-        `将依次为 ${targets.length} 话生成分格脚本，可能需要几分钟。${skipHint}\n\n确认开始吗？`,
+        `将依次为 ${targets.length} 话生成分格脚本，可能需要几分钟。${
+          scriptedEpisodes.length > 0 ? `已跳过 ${scriptedEpisodes.length} 话已有脚本。` : ""
+        }\n\n确认开始吗？`,
+      );
+      if (!ok) return;
+    } else {
+      const ok = window.confirm(
+        `将依次为 ${targets.length} 话生成分格脚本，可能需要几分钟。\n\n确认开始吗？`,
       );
       if (!ok) return;
     }
-
     batchScriptMut.mutate(targets);
   };
 
-  const isActionBusy = outlineMut.isPending || scriptMut.isPending || batchBusy || bundleMut.isPending;
+  const isActionBusy = outlineMut.isPending || scriptMut.isPending || batchBusy || bundleMut.isPending || scriptDialogOpen;
 
   return (
     <div className="space-y-4">
@@ -467,7 +553,8 @@ export function EpisodeListPanel({
               <Button
                 type="button"
                 size="sm"
-                disabled={isActionBusy || outlinedEpisodes.length === 0}
+                disabled={isActionBusy || outlinedEpisodes.length === 0 || manualScriptMode}
+                title={manualScriptMode ? "人工分格模式下请按话复制提示词并粘贴结果" : undefined}
                 onClick={requestBatchGenerateScripts}
               >
                 {batchBusy ? (
@@ -512,6 +599,30 @@ export function EpisodeListPanel({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="text-xs text-muted-foreground"
+              title="自动：本系统文本模型生成；人工：复制提示词到外部模型，再粘贴 JSON 写回"
+            >
+              分格方式
+            </span>
+            <SelectControl
+              className="rounded-md border bg-background px-2.5 py-1 text-xs"
+              value={manualScriptMode ? "manual" : "auto"}
+              disabled={batchBusy || scriptDialogOpen}
+              onChange={(event) => {
+                const enabled = event.target.value === "manual";
+                setManualScriptMode(enabled);
+                setManualScriptInterventionEnabled(enabled);
+                toast.message(
+                  enabled
+                    ? "已切换为人工分格：点「生成分格脚本」后复制提示词，再粘贴外部结果"
+                    : "已切换为自动分格：点「生成分格脚本」直接调用顶部文本模型",
+                );
+              }}
+            >
+              <option value="auto">自动</option>
+              <option value="manual">人工</option>
+            </SelectControl>
             <span className="text-xs text-muted-foreground">信息密度</span>
             <div className="flex rounded-md border bg-background p-0.5">
               {DENSITY_OPTIONS.map((option) => (
@@ -572,11 +683,20 @@ export function EpisodeListPanel({
             key={ep.id}
             ep={ep}
             isBusy={busyEpId === ep.id}
-            batchBusy={batchBusy}
+            batchBusy={batchBusy || scriptDialogOpen}
             onGenerateScript={generateScript}
           />
         ))}
       </div>
+
+      <ScriptGenerationConfirmDialog
+        open={scriptDialogOpen}
+        preview={scriptPreview}
+        loading={scriptPreviewLoading}
+        submitting={scriptApplySubmitting}
+        onCancel={closeScriptDialog}
+        onApply={(rawText) => { void applyManualScript(rawText); }}
+      />
     </div>
   );
 }

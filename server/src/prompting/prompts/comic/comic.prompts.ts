@@ -267,10 +267,13 @@ ${characterList}
 ${assetSection ? `## 角色可用资产（服装/武器/道具等）\n按剧情需要在 characterRefs 中引用：costume 填服装名，props 填道具/武器名列表\n${assetSection}\n` : ""}${existingSceneSection ? `## 项目已有场景（同地点请沿用同名，不要新建近义名）\n${existingSceneSection}\n` : ""}${input.factDigest ? `## 跨话一致性事实（请严格遵守）\n${input.factDigest}\n` : ""}
 ${input.scriptPromptInstruction ? `## 本次分格补充要求\n${input.scriptPromptInstruction}\n` : ""}
 ## 任务
-先识别本话场景 scenes（≤8 个），再生成约 ${panelTarget} 格的完整分格脚本，返回 { scenes, panels }。
-每格 panel 包含：order / panelType / densityLevel / focus / action / sceneRef / dialogues / characterRefs / visualPrompt / layoutData。
+先识别本话场景 scenes（≤8 个），再生成约 ${panelTarget} 格的完整分格脚本。
+必须只返回 JSON 对象：{ "scenes": Scene[], "panels": Panel[] }，不要额外说明文字。
+每个 panel 必须使用英文字段：order / panelType(establishing|close_up|action|reaction|transition) / densityLevel(low|medium|high) / focus / action / sceneRef / dialogues / characterRefs / visualPrompt / layoutData。
+scenes 每项：name / sceneType(interior|exterior|landscape|abstract|other) / palette / keyElements，可选 materials / ambiance / layout。
 scenes 示例：[{ "name": "宗门大殿", "sceneType": "interior", "palette": "暗金与朱红", "keyElements": "盘龙石柱、悬空匾额、青铜香炉", "ambiance": "幽暗烛光", "layout": "纵深对称，高台居中" }]。
 characterRefs 示例：[{ "name": "沈剑心", "costume": "战斗套装", "expression": "cold", "lighting": "side_lit", "props": ["月光剑"] }]。
+dialogues 示例：[{ "speaker": "沈剑心", "text": "今日一战，不容退缩。", "bubbleType": "round", "anchorHint": "top-left" }]。
 四格模式下 layoutData 示例：{ "layout": "four_koma", "subPanels": [{ "order": 1, "beat": "起", "visualPrompt": "..." }] }。
 保持情节连贯，镜头语言丰富，对白精炼，最后一格留悬念。`,
       ),

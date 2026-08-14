@@ -383,6 +383,42 @@ export async function generateComicPanelScript(episodeId: string, payload?: Gene
   return res.data.data!;
 }
 
+export interface PanelScriptPreparePreview {
+  kind: "comic_panel_script";
+  episodeId: string;
+  episodeOrder: number;
+  episodeTitle: string;
+  targetPanelCount: number;
+  densityMode: "relaxed" | "balanced" | "compact";
+  comicFormat: string;
+  systemPrompt: string;
+  userPrompt: string;
+  copyText: string;
+  schemaHint: string;
+}
+
+export async function prepareComicPanelScript(
+  episodeId: string,
+  payload?: GenerateScriptPayload,
+): Promise<PanelScriptPreparePreview> {
+  const res = await apiClient.post<ApiResponse<PanelScriptPreparePreview>>(
+    `/comic/episodes/${episodeId}/prepare-script`,
+    payload ?? {},
+  );
+  return res.data.data!;
+}
+
+export async function applyManualComicPanelScript(
+  episodeId: string,
+  payload: GenerateScriptPayload & { rawText: string },
+): Promise<ComicEpisode> {
+  const res = await apiClient.post<ApiResponse<ComicEpisode>>(
+    `/comic/episodes/${episodeId}/apply-manual-script`,
+    payload,
+  );
+  return res.data.data!;
+}
+
 export async function getComicPanel(panelId: string): Promise<ComicPanel> {
   const res = await apiClient.get<ApiResponse<ComicPanel>>(`/comic/panels/${panelId}`);
   return res.data.data!;

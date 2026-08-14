@@ -333,17 +333,17 @@ function StripView({
               )}
             </div>
 
-            <div className="flex items-center gap-2 bg-muted/20 px-3 py-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 bg-muted/20 px-2 py-1 text-[11px] text-muted-foreground">
               <span className="font-medium text-foreground">第 {panel.order} 格</span>
               <span className="opacity-60">{panel.panelType}</span>
-              {panel.focus && <span className="flex-1 truncate">{panel.focus}</span>}
-              <div className="ml-auto flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+              {panel.focus && <span className="min-w-0 flex-1 truncate">{panel.focus}</span>}
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 {cachedSelection ? (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-6 px-2 text-[11px]"
+                    className="h-6 px-1.5 text-[10px]"
                     disabled={busy}
                     onClick={() => onReselect(panel)}
                   >
@@ -355,7 +355,7 @@ function StripView({
                   <Button
                     type="button"
                     size="sm"
-                    className="h-6 px-2 text-[11px]"
+                    className="h-6 px-1.5 text-[10px]"
                     disabled={busy}
                     onClick={() => onGenerate(panel.id)}
                   >
@@ -367,7 +367,7 @@ function StripView({
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-[11px]"
+                    className="h-6 px-1.5 text-[10px]"
                     disabled={busy}
                     onClick={() => onGenerate(panel.id)}
                   >
@@ -379,10 +379,11 @@ function StripView({
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="h-6 px-2 text-[11px]"
+                  className="h-6 px-1.5 text-[10px]"
                   onClick={() => onSelect(panel)}
                 >
                   <FileText className="h-3 w-3" />
+                  词
                 </Button>
               </div>
             </div>
@@ -900,77 +901,79 @@ export function PanelsGridPanel({ projectId, provider }: { projectId: string; pr
                     )}
                   </div>
                 )}
-                <div className="p-1.5 text-xs text-muted-foreground">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-medium">第 {panel.order} 格</span>
-                    <span className={`rounded border px-1.5 py-0.5 text-[10px] ${density.className}`}>{density.label}</span>
+                <div className="flex items-center gap-1 border-t bg-background/95 px-1.5 py-1 text-[11px] text-muted-foreground">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-foreground">第 {panel.order} 格</span>
+                      <span className={`rounded border px-1 py-px text-[10px] ${density.className}`}>{density.label}</span>
+                    </div>
+                    <div className="truncate opacity-80">
+                      <span className="opacity-60">{panel.panelType}</span>
+                      {panel.focus ? <span className="ml-1">{panel.focus}</span> : null}
+                    </div>
                   </div>
-                  <div className="mt-1 truncate">
-                    <span className="opacity-60">{panel.panelType}</span>
-                    {panel.focus ? <span className="ml-1">{panel.focus}</span> : null}
-                  </div>
-                </div>
-                <div className="absolute inset-x-0 bottom-8 flex justify-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                  {cachedSelection ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 text-xs"
-                      disabled={busy}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        startPanelReselection(panel);
-                      }}
-                    >
-                      <Images className="h-3 w-3" />
-                      改选
-                    </Button>
-                  ) : null}
-                  {imageData.status !== "done" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={busy}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        startPanelGeneration(panel.id);
-                      }}
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      生图
-                    </Button>
-                  )}
-                  {imageData.status === "done" && (
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {cachedSelection ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-1.5 text-[10px]"
+                        disabled={busy}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startPanelReselection(panel);
+                        }}
+                      >
+                        <Images className="h-3 w-3" />
+                        改选
+                      </Button>
+                    ) : null}
+                    {imageData.status !== "done" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-6 px-1.5 text-[10px]"
+                        disabled={busy}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startPanelGeneration(panel.id);
+                        }}
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        生图
+                      </Button>
+                    )}
+                    {imageData.status === "done" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-1.5 text-[10px]"
+                        disabled={busy}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          startPanelGeneration(panel.id);
+                        }}
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        重抽
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-xs"
-                      disabled={busy}
+                      className="h-6 px-1.5 text-[10px]"
                       onClick={(event) => {
                         event.stopPropagation();
-                        startPanelGeneration(panel.id);
+                        setSelectedPanel(panel);
                       }}
                     >
-                      <RefreshCw className="h-3 w-3" />
-                      重抽
+                      <FileText className="h-3 w-3" />
+                      词
                     </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-xs"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedPanel(panel);
-                    }}
-                  >
-                    <FileText className="h-3 w-3" />
-                    提示词
-                  </Button>
+                  </div>
                 </div>
               </div>
             );
