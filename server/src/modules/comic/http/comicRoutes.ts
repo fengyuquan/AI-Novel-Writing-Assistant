@@ -18,12 +18,38 @@ import {
   isImageSelectionRequired,
   toImageSelectionResponsePayload,
 } from "../../../services/image/runtime";
+import {
+  buildComicProjectTransferFileName,
+  exportComicProjectPackage,
+  importComicProjectPackage,
+  previewComicProjectImport,
+} from "../transfer";
 
 const comicProjectService = new ComicProjectService();
 const comicEpisodePlanService = new ComicEpisodePlanService();
 const comicPanelScriptService = new ComicPanelScriptService();
 
 const router = Router();
+
+const projectTransferExportQuery = z.object({
+  includeImages: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return true;
+      if (typeof v === "boolean") return v;
+      return v === "true";
+    }),
+});
+
+const projectTransferImportBody = z.object({
+  package: z.unknown(),
+  titleOverride: z.string().trim().min(1).max(120).optional(),
+});
+
+const projectTransferPreviewBody = z.object({
+  package: z.unknown(),
+});
 
 function respondImageGenerationResult(res: import("express").Response, data: unknown): void {
   if (isImageSelectionRequired(data as never)) {
@@ -159,6 +185,60 @@ router.delete("/projects/:id", validate({ params: idParams }), async (req, res, 
     res.json({ success: true, data: null } satisfies ApiResponse<null>);
   } catch (err) { next(err); }
 });
+
+/** 导出整项目备份（JSON，可选附带生成图） */
+router.get(
+  "/projects/:id/project-export",
+  validate({ params: idParams, query: projectTransferExportQuery }),
+  async (req, res, next) => {
+    try {
+      const { id } = req.params as z.infer<typeof idParams>;
+      const query = projectTransferExportQuery.parse(req.query);
+      const data = await exportComicProjectPackage(id, { includeImages: query.includeImages });
+      const fileName = buildComicProjectTransferFileName(data.project.title, data.exportedAt);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      );
+      res.json(data);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** 预览整项目备份（导入前） */
+router.post(
+  "/projects/project-import/preview",
+  validate({ body: projectTransferPreviewBody }),
+  async (req, res, next) => {
+    try {
+      const body = req.body as z.infer<typeof projectTransferPreviewBody>;
+      const data = await previewComicProjectImport(body.package);
+      res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+/** 导入整项目备份为新项目 */
+router.post(
+  "/projects/project-import",
+  validate({ body: projectTransferImportBody }),
+  async (req, res, next) => {
+    try {
+      const body = req.body as z.infer<typeof projectTransferImportBody>;
+      const data = await importComicProjectPackage(body.package, {
+        titleOverride: body.titleOverride,
+      });
+      res.status(201).json({ success: true, data } satisfies ApiResponse<typeof data>);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ??? Source bundle ?????????????????????????????????????????????????????????
 

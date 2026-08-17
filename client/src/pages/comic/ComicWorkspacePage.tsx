@@ -20,6 +20,7 @@ import {
   type CreateComicProjectPayload,
 } from "@/api/comic";
 import { ComicImageGenerationNotice } from "@/pages/comic/ComicImageGenerationNotice";
+import { ImportComicProjectDialog } from "@/pages/comic/ImportComicProjectDialog";
 import { getNovelList } from "@/api/novel/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -562,6 +563,7 @@ export default function ComicWorkspacePage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [showWizard, setShowWizard] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [busyId, setBusyId] = useState("");
 
   const { data: projects = [], isLoading } = useQuery({
@@ -581,7 +583,7 @@ export default function ComicWorkspacePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold">
             <SquareStack className="h-6 w-6 text-primary" />
@@ -591,11 +593,19 @@ export default function ComicWorkspacePage() {
             将小说或原创故事一键生成条漫分格脚本与图像
           </p>
         </div>
-        <Button type="button" onClick={() => setShowWizard((v) => !v)}>
-          <Plus className="h-4 w-4" />
-          新建项目
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => setShowImportDialog(true)}>
+            <FileUp className="h-4 w-4" />
+            导入备份
+          </Button>
+          <Button type="button" onClick={() => setShowWizard((v) => !v)}>
+            <Plus className="h-4 w-4" />
+            新建项目
+          </Button>
+        </div>
       </div>
+
+      <ImportComicProjectDialog open={showImportDialog} onOpenChange={setShowImportDialog} />
 
       <ComicImageGenerationNotice />
 
@@ -617,11 +627,17 @@ export default function ComicWorkspacePage() {
         <Card className="py-16 text-center">
           <CardContent className="flex flex-col items-center gap-4">
             <FilePen className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-muted-foreground">还没有漫画项目，点击「新建项目」开始</p>
-            <Button type="button" onClick={() => setShowWizard(true)}>
-              <Plus className="h-4 w-4" />
-              新建项目
-            </Button>
+            <p className="text-muted-foreground">还没有漫画项目，可新建或从备份导入</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button type="button" variant="outline" onClick={() => setShowImportDialog(true)}>
+                <FileUp className="h-4 w-4" />
+                导入备份
+              </Button>
+              <Button type="button" onClick={() => setShowWizard(true)}>
+                <Plus className="h-4 w-4" />
+                新建项目
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

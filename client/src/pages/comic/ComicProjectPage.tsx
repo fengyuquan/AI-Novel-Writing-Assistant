@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   exportComicEpisode,
+  exportComicProjectBackup,
   getComicProject,
   listComicEpisodes,
   updateComicPreset,
@@ -66,8 +67,20 @@ function safeJsonParseProject(raw: string | null | undefined): { style?: string;
   try { return JSON.parse(raw); } catch { return {}; }
 }
 
+function downloadJson(data: unknown, fileName: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function ExportPanel({ projectId, episodes }: { projectId: string; episodes: ComicEpisode[] }) {
   const [selectedEpId, setSelectedEpId] = useState(episodes[0]?.id ?? "");
+  const [includeImages, setIncludeImages] = useState(true);
+
   const exportMut = useMutation({
     mutationFn: (episodeId: string) => exportComicEpisode(episodeId, { format: "long_image" }),
     onSuccess: (result) => {
@@ -80,35 +93,84 @@ function ExportPanel({ projectId, episodes }: { projectId: string; episodes: Com
     onError: (e) => toast.error(String(e)),
   });
 
+  const backupMut = useMutation({
+    mutationFn: () => exportComicProjectBackup(projectId, { includeImages }),
+    onSuccess: ({ package: pkg, fileName }) => {
+      downloadJson(pkg, fileName);
+      const fileNote =
+        pkg.meta.fileCount > 0
+          ? `，含 ${pkg.meta.fileCount} 张图片`
+          : includeImages
+            ? "（当前无可打包图片）"
+            : "（未包含图片）";
+      toast.success(`项目备份已下载${fileNote}`);
+    },
+    onError: (e) => toast.error(String(e)),
+  });
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 items-end">
-        <div className="space-y-1">
-          <label className="text-sm font-medium">选择话数</label>
-          <SelectControl
-            className="rounded-md border bg-background px-3 py-2 text-sm"
-            value={selectedEpId}
-            onChange={(e) => setSelectedEpId(e.target.value)}
-          >
-            {episodes.map((ep) => (
-              <option key={ep.id} value={ep.id}>
-                第 {ep.order} 话 {ep.title ? `《${ep.title}》` : ""}（{ep._count?.panels ?? 0} 格）
-              </option>
-            ))}
-          </SelectControl>
+    <div className="space-y-8">
+      <section className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">导出长图成品</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            把某一话的格子图拼成长图，适合直接发布或分享。
+          </p>
         </div>
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">选择话数</label>
+            <SelectControl
+              className="rounded-md border bg-background px-3 py-2 text-sm"
+              value={selectedEpId}
+              onChange={(e) => setSelectedEpId(e.target.value)}
+            >
+              {episodes.map((ep) => (
+                <option key={ep.id} value={ep.id}>
+                  第 {ep.order} 话 {ep.title ? `《${ep.title}》` : ""}（{ep._count?.panels ?? 0} 格）
+                </option>
+              ))}
+            </SelectControl>
+          </div>
+          <Button
+            type="button"
+            disabled={!selectedEpId || exportMut.isPending}
+            onClick={() => exportMut.mutate(selectedEpId)}
+          >
+            <Download className="h-4 w-4" />
+            {exportMut.isPending ? "导出中…" : "导出长图"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          导出前请确保所有格子已生成图像。图像内文字由模型直接渲染。
+        </p>
+      </section>
+
+      <section className="space-y-4 border-t pt-6">
+        <div>
+          <h3 className="text-sm font-semibold">备份整个漫画项目</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            下载可再导入的备份文件，用于换机恢复或复制项目。可在漫画工作台「导入备份」恢复为新项目。
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={includeImages}
+            onChange={(e) => setIncludeImages(e.target.checked)}
+          />
+          同时打包已生成的角色图、场景图与格子图（文件会更大）
+        </label>
         <Button
           type="button"
-          disabled={!selectedEpId || exportMut.isPending}
-          onClick={() => exportMut.mutate(selectedEpId)}
+          variant="outline"
+          disabled={backupMut.isPending}
+          onClick={() => backupMut.mutate()}
         >
           <Download className="h-4 w-4" />
-          {exportMut.isPending ? "导出中…" : "导出长图"}
+          {backupMut.isPending ? "打包中…" : "下载项目备份"}
         </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        导出前请确保所有格子已生成图像。图像内文字由模型直接渲染。
-      </p>
+      </section>
     </div>
   );
 }

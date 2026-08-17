@@ -32,4 +32,5 @@ export * from "./types/onboarding";
 export * from "./types/volumePlanning";
 export * from "./types/canonicalState";
 export * from "./types/creationStudio";
+export * from "./types/comicProjectTransfer";
 export * from "./utils/bookAnalysisTimeline";

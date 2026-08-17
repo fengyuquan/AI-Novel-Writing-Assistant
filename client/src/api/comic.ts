@@ -1,5 +1,17 @@
 import type { ApiResponse } from "@ai-novel/shared/types/api";
+import type {
+  ComicProjectTransferImportResult,
+  ComicProjectTransferPackage,
+  ComicProjectTransferPreview,
+} from "@ai-novel/shared/types/comicProjectTransfer";
+import { API_TIMEOUT_MS } from "@/lib/constants";
 import { apiClient } from "./client";
+
+export type {
+  ComicProjectTransferImportResult,
+  ComicProjectTransferPackage,
+  ComicProjectTransferPreview,
+} from "@ai-novel/shared/types/comicProjectTransfer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -860,3 +872,69 @@ export async function uploadComicSceneImage(sceneId: string, file: File): Promis
 export function comicSceneImageUrl(sceneId: string): string {
   return `/api/comic/scenes/${sceneId}/image`;
 }
+
+// ─── Project backup transfer（整项目导入/导出）────────────────────────────────
+
+function extractComicTransferFileName(
+  contentDisposition: string | undefined,
+  fallback: string,
+): string {
+  if (!contentDisposition) return fallback;
+  const utf8 = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (utf8?.[1]) {
+    try {
+      return decodeURIComponent(utf8[1].trim());
+    } catch {
+      return utf8[1].trim();
+    }
+  }
+  const plain = /filename\s*=\s*"?([^";]+)"?/i.exec(contentDisposition);
+  return plain?.[1]?.trim() || fallback;
+}
+
+export async function exportComicProjectBackup(
+  projectId: string,
+  options?: { includeImages?: boolean },
+): Promise<{ package: ComicProjectTransferPackage; fileName: string }> {
+  const includeImages = options?.includeImages !== false;
+  const res = await apiClient.get<ComicProjectTransferPackage>(
+    `/comic/projects/${projectId}/project-export`,
+    {
+      params: { includeImages: includeImages ? "true" : "false" },
+      timeout: API_TIMEOUT_MS,
+      maxContentLength: Infinity,
+    },
+  );
+  const fallback = `comic-project-${projectId}.comic.json`;
+  return {
+    package: res.data,
+    fileName: extractComicTransferFileName(res.headers["content-disposition"], fallback),
+  };
+}
+
+export async function previewComicProjectBackup(
+  pkg: unknown,
+): Promise<ComicProjectTransferPreview> {
+  const res = await apiClient.post<ApiResponse<ComicProjectTransferPreview>>(
+    "/comic/projects/project-import/preview",
+    { package: pkg },
+    { timeout: API_TIMEOUT_MS, maxBodyLength: Infinity },
+  );
+  return res.data.data!;
+}
+
+export async function importComicProjectBackup(input: {
+  package: unknown;
+  titleOverride?: string;
+}): Promise<ComicProjectTransferImportResult> {
+  const res = await apiClient.post<ApiResponse<ComicProjectTransferImportResult>>(
+    "/comic/projects/project-import",
+    {
+      package: input.package,
+      titleOverride: input.titleOverride,
+    },
+    { timeout: API_TIMEOUT_MS, maxBodyLength: Infinity },
+  );
+  return res.data.data!;
+}
+
