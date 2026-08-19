@@ -138,6 +138,8 @@ export interface ComicBatchJob {
   createdAt: string;
 }
 
+export type ComicAdaptationMode = "faithful" | "creative";
+
 export interface CreateComicProjectPayload {
   title: string;
   sourceType: ComicSourceType;
@@ -147,6 +149,8 @@ export interface CreateComicProjectPayload {
   rawText?: string;
   comicFormat?: string;
   stylePreset?: string;
+  /** 文本导入时：保真（新闻/报道）或创意改编 */
+  adaptationMode?: ComicAdaptationMode;
 }
 
 export interface GenerateOutlinePayload {

@@ -348,3 +348,242 @@ ${input.userInstruction?.trim() || "（无具体期望，请检测并消除内�
     ];
   },
 };
+
+// ─── 保真分话大纲（新闻/纪实） ────────────────────────────────────────────────
+
+export const comicFaithfulEpisodeOutlineOutputSchema = z.object({
+  episodes: z.array(z.object({
+    order: z.number().int().min(1),
+    title: z.string().trim().min(1).max(40),
+    synopsis: z.string().trim().min(10).max(400),
+    /** 本话覆盖的原文摘录（连续片段，供分格保真对白） */
+    sourceExcerpt: z.string().trim().min(1).max(6000),
+    hookType: z.string().trim().optional(),
+    cliffhanger: z.string().trim().max(100).optional(),
+    isPaywalled: z.boolean().default(false),
+  })).min(1).max(40),
+});
+
+export type ComicFaithfulEpisodeOutlineOutput = z.infer<typeof comicFaithfulEpisodeOutlineOutputSchema>;
+
+export interface ComicFaithfulEpisodeOutlinePromptInput {
+  title: string;
+  synopsis: string;
+  beatsDigest: string;
+  hardFactsDigest?: string;
+  quotedLinesDigest?: string;
+  rawText: string;
+  startOrder: number;
+  endOrder: number;
+  stylePreset?: string;
+}
+
+export const comicFaithfulEpisodeOutlinePrompt: PromptAsset<
+  ComicFaithfulEpisodeOutlinePromptInput,
+  ComicFaithfulEpisodeOutlineOutput
+> = {
+  id: "comic.episodeOutline.faithful",
+  version: "v1",
+  taskType: "outline_planning",
+  mode: "structured",
+  language: "zh",
+  contextPolicy: { maxTokensBudget: 8000 },
+  outputSchema: comicFaithfulEpisodeOutlineOutputSchema,
+  render(input) {
+    return [
+      new SystemMessage(
+        `你是纪实/新闻漫画的分话策划。任务：把原文按事件块切成第 ${input.startOrder}-${input.endOrder} 话大纲。
+
+硬约束：
+1. 不得虚构冲突、钩子、悬念或原文没有的情节；hookType / cliffhanger 可空，禁止娱乐化卡点。
+2. isPaywalled 一律 false。
+3. synopsis 只陈述本话覆盖的原文事实推进。
+4. sourceExcerpt 必须是【导入原文】中的连续子串，覆盖本话内容；各话 excerpt 按原文顺序衔接，尽量不重叠。
+5. 画风参考：${input.stylePreset ?? "彩色条漫"}，仅影响呈现，不改变事实。
+只输出 JSON。`,
+      ),
+      new HumanMessage(
+        `漫画项目「${input.title}」请规划第 ${input.startOrder}-${input.endOrder} 话（保真分话）。
+
+## 内容梗概
+${input.synopsis}
+
+## 事件节拍
+${input.beatsDigest}
+
+${input.hardFactsDigest ? `## 硬事实\n${input.hardFactsDigest}\n` : ""}
+${input.quotedLinesDigest ? `## 原文引语清单\n${input.quotedLinesDigest}\n` : ""}
+## 导入原文
+${input.rawText.slice(0, 18000)}
+
+## 输出
+episodes：order / title / synopsis / sourceExcerpt / isPaywalled(false)。按 order 升序。`,
+      ),
+    ];
+  },
+};
+
+// ─── 保真分格脚本 ─────────────────────────────────────────────────────────────
+
+const faithfulDialogueSchema = z.object({
+  speaker: z.string().trim().min(1),
+  text: z.string().trim().min(1).max(200),
+  bubbleType: z.enum(["round", "spike", "cloud", "caption"]).default("round"),
+  anchorHint: z.string().trim().optional(),
+});
+
+const faithfulPanelScriptSchema = z.object({
+  order: z.number().int().min(1),
+  panelType: z.enum(["establishing", "close_up", "action", "reaction", "transition"]),
+  densityLevel: z.enum(["low", "medium", "high"]).default("medium"),
+  focus: z.string().trim().min(1).max(120),
+  action: z.string().trim().min(1).max(200),
+  sceneRef: z.string().trim().max(60).optional(),
+  dialogues: z.array(faithfulDialogueSchema).max(3).default([]),
+  characterRefs: z.array(panelCharacterRefSchema).max(5).default([]),
+  visualPrompt: z.string().trim().min(1).max(400),
+  layoutData: z
+    .object({
+      layout: z.enum(["single", "four_koma"]).default("single"),
+      subPanels: z
+        .array(z.object({
+          order: z.number().int().min(1).max(4),
+          beat: z.enum(["起", "承", "转", "合"]),
+          visualPrompt: z.string().trim().min(1).max(180),
+        }))
+        .max(4)
+        .optional(),
+    })
+    .optional(),
+});
+
+export const comicFaithfulPanelScriptOutputSchema = z.object({
+  scenes: z.array(sceneSchema).max(8).default([]),
+  panels: z.array(faithfulPanelScriptSchema).min(4).max(80),
+});
+
+export type ComicFaithfulPanelScriptOutput = z.infer<typeof comicFaithfulPanelScriptOutputSchema>;
+
+export const comicFaithfulPanelScriptPrompt: PromptAsset<
+  ComicPanelScriptPromptInput,
+  ComicFaithfulPanelScriptOutput
+> = {
+  id: "comic.panelScript.faithful",
+  version: "v1",
+  taskType: "chapter_drafting",
+  mode: "structured",
+  language: "zh",
+  contextPolicy: { maxTokensBudget: 9500 },
+  outputSchema: comicFaithfulPanelScriptOutputSchema,
+  render(input) {
+    const panelTarget = input.targetPanelCount ?? 24;
+    const characterList = input.characters
+      .map((c) => `- ${c.name}：${c.visualAnchor ?? "（暂无视觉描述）"}`)
+      .join("\n");
+    const stylePrefix = input.stylePromptKeywords
+      ?? (input.stylePreset ? `${input.stylePreset} style` : "webtoon style, clean documentary comic");
+    const is4koma = input.comicFormat === "4koma";
+    const visualPromptRule = is4koma
+      ? `visualPrompt 必须以「${stylePrefix}」开头，并按四格描述起承转合；不含气泡文字。`
+      : `visualPrompt 必须以「${stylePrefix}」开头，再描述画面；不含气泡文字。`;
+
+    return [
+      new SystemMessage(
+        `你是纪实/新闻漫画分镜师。职责：在不改台词、不改事实的前提下，把本话原文拆成约 ${panelTarget} 格分镜。
+
+【保真硬约束】
+1. dialogues[].text 必须是【本话原文】中的连续子串；优先使用带引号或可归因的引语。
+2. 无可用引语时，用 bubbleType=caption 的旁白，旁白也必须是原文连续子串或对其无增删的压缩（不得新增事实/数字/结论）。
+3. 禁止改写专名、数字、时间、地点、因果结论；禁止发明对话。
+4. 允许：分镜顺序、镜头类型、表情、构图、visualPrompt 画面化（画面不得暗示原文没有的事实）。
+5. dialogues[].text 不要加说话人前缀；speaker 单独填写；无明确说话人的旁白 speaker 可用「旁白」。
+6. ${visualPromptRule}
+7. 先输出 scenes（≤8），再输出 panels；sceneRef 必须取自 scenes.name。`,
+      ),
+      new HumanMessage(
+        `漫画项目：${input.projectTitle}
+本话：第 ${input.episodeOrder} 话《${input.episodeTitle}》
+
+## 本话情节大纲
+${input.episodeSynopsis}
+
+## 本话原文（对白与事实的唯一依据）
+${(input.sourceText ?? "").slice(0, 8000) || "（缺少原文，请仅根据大纲做镜头化且不新增事实）"}
+
+## 出场角色
+${characterList}
+
+${input.factDigest ? `## 跨话一致性事实\n${input.factDigest}\n` : ""}
+${input.scriptPromptInstruction ? `## 本次分格补充要求（仅影响镜头表达，不得改事实）\n${input.scriptPromptInstruction}\n` : ""}
+## 任务
+生成约 ${panelTarget} 格保真分格脚本 JSON：{ "scenes": Scene[], "panels": Panel[] }。`,
+      ),
+    ];
+  },
+};
+
+// ─── 保真校验（质量债，不阻断） ───────────────────────────────────────────────
+
+export const comicFidelityCheckOutputSchema = z.object({
+  overall: z.enum(["pass", "warn", "fail"]),
+  summary: z.string().trim().min(1).max(400),
+  issues: z.array(z.object({
+    kind: z.enum(["dialogue_altered", "fact_invented", "fact_omitted", "quote_mismatch", "other"]),
+    severity: z.enum(["low", "medium", "high"]),
+    panelOrder: z.number().int().min(1).optional(),
+    detail: z.string().trim().min(1).max(300),
+    suggestion: z.string().trim().max(200).optional(),
+  })).max(20).default([]),
+  /** 是否仍可继续出图（局部问题应 true） */
+  continueAllowed: z.boolean().default(true),
+});
+
+export type ComicFidelityCheckOutput = z.infer<typeof comicFidelityCheckOutputSchema>;
+
+export interface ComicFidelityCheckPromptInput {
+  projectTitle: string;
+  episodeOrder: number;
+  episodeTitle: string;
+  sourceText: string;
+  panelDigest: string;
+  hardFactsDigest?: string;
+}
+
+export const comicFidelityCheckPrompt: PromptAsset<
+  ComicFidelityCheckPromptInput,
+  ComicFidelityCheckOutput
+> = {
+  id: "comic.fidelityCheck",
+  version: "v1",
+  taskType: "light_review",
+  mode: "structured",
+  language: "zh",
+  contextPolicy: { maxTokensBudget: 7000 },
+  outputSchema: comicFidelityCheckOutputSchema,
+  render(input) {
+    return [
+      new SystemMessage(
+        `你是新闻漫画保真审校员。对照原文检查分格对白与关键事实是否被改写或新增。
+规则：
+1. 对白/旁白若与原文连续子串不一致（改写、添油加醋），记 dialogue_altered 或 quote_mismatch。
+2. 分格暗示了原文没有的事件/数字/结论，记 fact_invented。
+3. 镜头化、表情、构图差异不算问题。
+4. 局部问题 overall 用 warn，continueAllowed=true；仅当几乎整话失真时 fail，但仍建议 continueAllowed=true（由产品记质量债，不阻断出图）。
+只输出 JSON。`,
+      ),
+      new HumanMessage(
+        `项目：${input.projectTitle}
+本话：第 ${input.episodeOrder} 话《${input.episodeTitle}》
+
+## 原文
+${input.sourceText.slice(0, 6000)}
+
+${input.hardFactsDigest ? `## 硬事实\n${input.hardFactsDigest}\n` : ""}
+## 分格摘要（含对白）
+${input.panelDigest.slice(0, 6000)}
+
+请输出保真校验结果。`,
+      ),
+    ];
+  },
+};

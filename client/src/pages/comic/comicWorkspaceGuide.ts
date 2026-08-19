@@ -62,12 +62,31 @@ function countScriptedEpisodes(episodes: ComicEpisode[]): number {
   return episodes.filter((ep) => (ep._count?.panels ?? 0) > 0 || Boolean(ep.scriptConfig)).length;
 }
 
+function resolveProjectAdaptationMode(
+  stylePreset: string | null | undefined,
+  sourceType: string,
+): "faithful" | "creative" {
+  if (stylePreset?.trim()) {
+    try {
+      const parsed = JSON.parse(stylePreset) as { adaptationMode?: string };
+      if (parsed.adaptationMode === "faithful" || parsed.adaptationMode === "creative") {
+        return parsed.adaptationMode;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return sourceType === "text_import" ? "faithful" : "creative";
+}
+
 export function resolveComicWorkspaceGuide(input: {
   project: ComicProjectDetail;
   episodes: ComicEpisode[];
   hasImageProvider: boolean;
 }): ComicWorkspaceGuide {
   const { project, episodes, hasImageProvider } = input;
+  const adaptationMode = resolveProjectAdaptationMode(project.stylePreset, project.sourceType);
+  const isFaithfulText = project.sourceType === "text_import" && adaptationMode === "faithful";
   const hasBundle = Boolean(project.sourceBundle);
   const hasEpisodes = episodes.length > 0;
   const scriptedCount = countScriptedEpisodes(episodes);
@@ -91,7 +110,9 @@ export function resolveComicWorkspaceGuide(input: {
       title: "下一步：导入内容源",
       description: project.sourceType === "novel_import"
         ? "先把选定小说整理成漫画可用的内容源，后面才能生成分话大纲和角色。"
-        : "先把你刚填的故事内容整理成漫画内容源，系统才能据此拆话和分格。",
+        : isFaithfulText
+          ? "先把你粘贴的新闻/报道整理成内容源；保真模式下系统不会改写引语和事实。"
+          : "先把你刚填的故事内容整理成漫画内容源，系统才能据此拆话和分格。",
       consequence: "内容源就绪后，就可以一键生成分话大纲。",
       actionLabel: "去导入内容源",
       tab: "outline",
@@ -106,7 +127,9 @@ export function resolveComicWorkspaceGuide(input: {
       stepId: "generate_outline",
       stepIndex: 1,
       title: "下一步：生成分话大纲",
-      description: "内容源已就绪。先生成前几话大纲，把故事拆成一话一话的漫画单元。",
+      description: isFaithfulText
+        ? "内容源已就绪。按报道段落生成分话大纲，每话会带上对应原文摘录，供保真分格使用。"
+        : "内容源已就绪。先生成前几话大纲，把故事拆成一话一话的漫画单元。",
       consequence: "有了大纲后，就可以一键或按话生成分格脚本。",
       actionLabel: "去生成大纲",
       tab: "outline",
@@ -121,7 +144,9 @@ export function resolveComicWorkspaceGuide(input: {
       stepId: "generate_script",
       stepIndex: 2,
       title: "下一步：生成分格脚本",
-      description: `已有 ${episodes.length} 话大纲。可点「一键生成分格」批量处理，也可按话单独生成。`,
+      description: isFaithfulText
+        ? `已有 ${episodes.length} 话大纲。生成分格时气泡文字会尽量沿用原文引语；若有偏差可在分格页手动改字。`
+        : `已有 ${episodes.length} 话大纲。可点「一键生成分格」批量处理，也可按话单独生成。`,
       consequence: "分格脚本出来后，建议先补角色设定图，再批量出图更稳。",
       actionLabel: "去生成分格",
       tab: "outline",

@@ -83,6 +83,7 @@ const createProjectSchema = z.object({
   inspiration: z.string().trim().max(4000).optional(),
   rawText: z.string().trim().max(200000).optional(),
   stylePreset: z.string().trim().max(1000).optional(),
+  adaptationMode: z.enum(["faithful", "creative"]).optional(),
 });
 
 const styleUpdateSchema = z.object({

@@ -186,8 +186,34 @@ export const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("../prompts/comic/comic.prompts").comicEpisodeOutlinePrompt as UnknownPromptAsset,
   },
   {
+    key: "comic.episodeOutline.faithful@v1",
+    load: () => require("../prompts/comic/comic.prompts").comicFaithfulEpisodeOutlinePrompt as UnknownPromptAsset,
+  },
+  {
     key: "comic.panelScript@v1",
     load: () => require("../prompts/comic/comic.prompts").comicPanelScriptPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "comic.panelScript.faithful@v1",
+    load: () => require("../prompts/comic/comic.prompts").comicFaithfulPanelScriptPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "comic.fidelityCheck@v1",
+    load: () => require("../prompts/comic/comic.prompts").comicFidelityCheckPrompt as UnknownPromptAsset,
+  },
+  {
+    key: "comic.visualAnchorRewrite@v1",
+    load: () => require("../prompts/comic/comic.prompts").comicVisualAnchorRewritePrompt as UnknownPromptAsset,
+  },
+  {
+    key: "adaptation.source.text_bundle@v1",
+    load: () =>
+      require("../prompts/adaptation/sourceBundle.prompts").adaptationTextImportSourcePrompt as UnknownPromptAsset,
+  },
+  {
+    key: "adaptation.source.original_bundle@v1",
+    load: () =>
+      require("../prompts/adaptation/sourceBundle.prompts").adaptationOriginalSourcePrompt as UnknownPromptAsset,
   },
   {
     key: "planner.book.plan@v1",

@@ -3,17 +3,22 @@
  *
  * 复用 drama 已验证的 rhythmEngine + paywallPlanPolicy，
  * 生成每话大纲（hookType / cliffhanger / 卡点）并落库 ComicEpisode。
+ * 保真模式使用事件块切片大纲，弱化娱乐钩子，并写入 sourceExcerpt。
  */
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
-import { comicEpisodeOutlinePrompt } from "../../prompting/prompts/comic/comic.prompts";
+import {
+  comicEpisodeOutlinePrompt,
+  comicFaithfulEpisodeOutlinePrompt,
+} from "../../prompting/prompts/comic/comic.prompts";
+import type { SourceBundle } from "../adaptation/contracts/sourceBundle";
 // rhythmEngine 是纯领域知识（零外部依赖），可直接 import
 import { rhythmEngine, type TrackId } from "../drama/engine/rhythmEngine";
 import {
-  describeDramaPaywallPlan,
   resolveDramaPaywallPlan,
 } from "../drama/engine/paywallPlanPolicy";
+import { parseComicStylePreset, resolveComicAdaptationMode } from "./comicAdaptationMode";
 
 export interface GenerateComicOutlineInput {
   startOrder?: number;
@@ -35,9 +40,18 @@ export class ComicEpisodePlanService {
       throw new Error("请先导入内容源（importSourceBundle）再生成分话大纲。");
     }
 
-    const bundle = JSON.parse(project.sourceBundle.bundleJson);
+    const bundle = JSON.parse(project.sourceBundle.bundleJson) as SourceBundle;
     const synopsis: string = bundle.synopsis ?? "";
     const beats: Array<{ order: number; summary: string }> = bundle.beats ?? [];
+    const adaptationMode = resolveComicAdaptationMode(project.stylePreset, project.sourceType);
+    const stylePreset = parseComicStylePreset(project.stylePreset).style;
+    const rawText =
+      (bundle.rawText ?? "").trim()
+      || (project.sourceInput ?? "").trim();
+
+    if (adaptationMode === "faithful" && project.sourceType === "text_import") {
+      return this.generateFaithfulOutline(projectId, project.title, bundle, rawText, stylePreset, input, provider);
+    }
 
     const trackId = project.trackId as TrackId | undefined;
     const track = trackId ? rhythmEngine.getTrack(trackId) : null;
@@ -83,16 +97,13 @@ export class ComicEpisodePlanService {
         endOrder,
         paywallOrders,
         hookLibrary,
-        stylePreset: project.stylePreset
-          ? JSON.parse(project.stylePreset).style
-          : undefined,
+        stylePreset,
       },
       options: { temperature: 0.6, provider },
     });
 
     const episodes = result.output.episodes;
 
-    // 事务：落库 ComicEpisode（幂等，order 已存在则更新）
     await prisma.$transaction(async (tx) => {
       for (const ep of episodes) {
         await tx.comicEpisode.upsert({
@@ -113,6 +124,89 @@ export class ComicEpisodePlanService {
             hookType: ep.hookType ?? null,
             cliffhanger: ep.cliffhanger ?? null,
             isPaywalled: ep.isPaywalled,
+          },
+        });
+      }
+      await tx.comicProject.update({
+        where: { id: projectId },
+        data: { status: "outlined" },
+      });
+    });
+
+    return prisma.comicEpisode.findMany({
+      where: { projectId, order: { gte: startOrder, lte: endOrder } },
+      orderBy: { order: "asc" },
+    });
+  }
+
+  private async generateFaithfulOutline(
+    projectId: string,
+    title: string,
+    bundle: SourceBundle,
+    rawText: string,
+    stylePreset: string | undefined,
+    input: GenerateComicOutlineInput,
+    provider?: LLMProvider,
+  ) {
+    const beats = bundle.beats ?? [];
+    // 新闻短文：按节拍数估话数，默认较少
+    const targetEpisodes = Math.max(1, Math.min(20, Math.ceil(Math.max(beats.length, 1) / 2)));
+    const startOrder = Math.max(1, input.startOrder ?? 1);
+    const count = Math.min(40, Math.max(1, input.count ?? Math.min(6, targetEpisodes)));
+    const endOrder = Math.min(targetEpisodes, startOrder + count - 1);
+
+    const beatsDigest = beats
+      .slice(0, 60)
+      .map((beat) => `${beat.order}：${beat.summary}`)
+      .join("\n") || "（无结构化节拍，按原文段落分话）";
+
+    const hardFactsDigest = (bundle.hardFacts ?? [])
+      .map((f) => `- [${f.category}] ${f.text}`)
+      .join("\n");
+    const quotedLinesDigest = (bundle.quotedLines ?? [])
+      .map((q) => `- ${q.speaker ? `${q.speaker}：` : ""}${q.text}`)
+      .join("\n");
+
+    const result = await runStructuredPrompt({
+      asset: comicFaithfulEpisodeOutlinePrompt,
+      promptInput: {
+        title,
+        synopsis: bundle.synopsis ?? "",
+        beatsDigest,
+        hardFactsDigest: hardFactsDigest || undefined,
+        quotedLinesDigest: quotedLinesDigest || undefined,
+        rawText: rawText || bundle.synopsis || "",
+        startOrder,
+        endOrder,
+        stylePreset,
+      },
+      options: { temperature: 0.25, provider },
+    });
+
+    const episodes = result.output.episodes;
+
+    await prisma.$transaction(async (tx) => {
+      for (const ep of episodes) {
+        await tx.comicEpisode.upsert({
+          where: { projectId_order: { projectId, order: ep.order } },
+          create: {
+            projectId,
+            order: ep.order,
+            title: ep.title,
+            outline: ep.synopsis,
+            hookType: null,
+            cliffhanger: null,
+            isPaywalled: false,
+            sourceText: ep.sourceExcerpt,
+            status: "draft",
+          },
+          update: {
+            title: ep.title,
+            outline: ep.synopsis,
+            hookType: null,
+            cliffhanger: null,
+            isPaywalled: false,
+            sourceText: ep.sourceExcerpt,
           },
         });
       }

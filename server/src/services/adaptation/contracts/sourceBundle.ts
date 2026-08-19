@@ -22,6 +22,8 @@ export interface SourceRef {
   inspiration?: string;
   /** text_import / comic_import：原始文本 */
   rawText?: string;
+  /** text_import：保真 / 创意改编（默认 faithful） */
+  adaptationMode?: "faithful" | "creative";
 }
 
 /** 情节节拍（来源无关） */
@@ -52,6 +54,12 @@ export interface SourceFact {
   category: SourceFactCategory;
 }
 
+/** 原文引语（保真改编可核对） */
+export interface SourceQuotedLine {
+  speaker?: string;
+  text: string;
+}
+
 /** 标准化内容包 */
 export interface SourceBundle {
   synopsis: string;
@@ -59,6 +67,8 @@ export interface SourceBundle {
   characters: SourceCharacter[];
   worldNotes?: string;
   hardFacts?: SourceFact[];
+  /** 原文引语清单（text_import 保真模式） */
+  quotedLines?: SourceQuotedLine[];
   /** 原始文本（text_import 保留） */
   rawText?: string;
 }

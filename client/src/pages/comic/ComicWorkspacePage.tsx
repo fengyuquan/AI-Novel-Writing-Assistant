@@ -35,7 +35,7 @@ import { isTxtFile, readTextFile } from "@/lib/textFile";
 const SOURCE_LABELS: Record<ComicSourceType, string> = {
   novel_import: "导入小说",
   original: "原创灵感",
-  text_import: "TXT/文本导入",
+  text_import: "粘贴原文",
   comic_import: "漫画改编",
 };
 
@@ -288,6 +288,7 @@ function CreateWizard({ onCreated }: { onCreated: (id: string) => void }) {
     sourceRef: "",
     inspiration: "",
     rawText: "",
+    adaptationMode: "faithful" as "faithful" | "creative",
     format: "webtoon",
     style: "webtoon_color",
   });
@@ -325,6 +326,7 @@ function CreateWizard({ onCreated }: { onCreated: (id: string) => void }) {
       sourceRef: form.sourceType === "novel_import" ? form.sourceRef : undefined,
       inspiration: form.sourceType === "original" ? form.inspiration.trim() : undefined,
       rawText: form.sourceType === "text_import" ? form.rawText.trim() : undefined,
+      adaptationMode: form.sourceType === "text_import" ? form.adaptationMode : undefined,
       comicFormat: selectedFormat.value,
       stylePreset: JSON.stringify({ style: form.style, format: selectedFormat.value, promptKeywords: selectedFormat.promptKeywords, imageSize: selectedFormat.imageSize }),
     });
@@ -405,10 +407,31 @@ function CreateWizard({ onCreated }: { onCreated: (id: string) => void }) {
             )}
 {form.sourceType === "text_import" && (
               <div className="space-y-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">改编方式</label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, adaptationMode: "faithful" }))}
+                      className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${form.adaptationMode === "faithful" ? "border-primary bg-primary/5" : "border-border bg-muted/40 hover:bg-accent"}`}
+                    >
+                      <span className="font-medium">保真改编</span>
+                      <p className="mt-0.5 text-xs text-muted-foreground">适合新闻、报道：不改引语与事实，只做分镜与出图</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, adaptationMode: "creative" }))}
+                      className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${form.adaptationMode === "creative" ? "border-primary bg-primary/5" : "border-border bg-muted/40 hover:bg-accent"}`}
+                    >
+                      <span className="font-medium">创意改编</span>
+                      <p className="mt-0.5 text-xs text-muted-foreground">可压缩叙述、强化节奏，适合长篇小说原文</p>
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">导入 txt 小说</label>
+                  <label className="text-sm font-medium">导入 txt 或粘贴原文</label>
                   <p className="text-xs text-muted-foreground">
-                    可直接选择本地 .txt 小说文件，系统会自动识别常见编码并填入原文。
+                    可粘贴新闻、报道全文，或选择本地 .txt 文件（常见编码自动识别）。
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
@@ -426,7 +449,7 @@ function CreateWizard({ onCreated }: { onCreated: (id: string) => void }) {
                         try {
                           const text = await readTextFile(file);
                           if (!text.trim()) {
-                            toast.error("文件内容为空，请换一份小说文本再试");
+                            toast.error("文件内容为空，请换一份文本再试");
                             return;
                           }
                           const clipped = text.slice(0, 200000);
@@ -456,7 +479,7 @@ function CreateWizard({ onCreated }: { onCreated: (id: string) => void }) {
                   <label className="text-sm font-medium">原文内容</label>
                   <textarea
                     className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-y min-h-[160px]"
-                    placeholder="粘贴完整小说原文，或上方导入 .txt（最多 20 万字）…"
+                    placeholder="粘贴新闻、报道或完整原文，或上方导入 .txt（最多 20 万字）…"
                     rows={8}
                     value={form.rawText}
                     onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setForm((f) => ({ ...f, rawText: e.target.value }))}

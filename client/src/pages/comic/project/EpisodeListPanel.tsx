@@ -52,6 +52,11 @@ function parseScriptConfig(raw: string | null | undefined): {
   targetPanelCount?: number;
   comicFormat?: string;
   generatedAt?: string;
+  adaptationMode?: string;
+  qualityDebt?: {
+    overall?: "pass" | "warn" | "fail";
+    summary?: string;
+  };
 } {
   if (!raw) return {};
   try {
@@ -229,6 +234,11 @@ function EpisodeCard({
             )}
             {ep.cliffhanger && (
               <p className="mt-1 text-[11px] text-muted-foreground/70 italic">↳ {ep.cliffhanger}</p>
+            )}
+            {scriptConfig.qualityDebt && scriptConfig.qualityDebt.overall !== "pass" && (
+              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-400">
+                保真提示：{scriptConfig.qualityDebt.summary ?? "部分对白与原文不完全一致，可在分格页改气泡。"}
+              </p>
             )}
             {scriptConfig.densityMode && (
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">

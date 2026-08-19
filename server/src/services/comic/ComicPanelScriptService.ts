@@ -4,12 +4,18 @@ import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { preparePromptExecution, runStructuredPrompt } from "../../prompting/core/promptRunner";
 import {
+  comicFaithfulPanelScriptPrompt,
   comicPanelScriptPrompt,
+  type ComicFaithfulPanelScriptOutput,
   type ComicPanelScriptOutput,
   type ComicPanelScriptPromptInput,
 } from "../../prompting/prompts/comic/comic.prompts";
+import type { PromptAsset } from "../../prompting/core/promptTypes";
+import type { SourceBundle } from "../adaptation/contracts/sourceBundle";
 import { adaptationSourceRegistry } from "../adaptation/source/SourceContentPort";
 import { comicFactService } from "./ComicFactService";
+import { comicFidelityCheckService } from "./ComicFidelityCheckService";
+import { resolveComicAdaptationMode, parseComicStylePreset } from "./comicAdaptationMode";
 import {
   PANEL_SCRIPT_OUTPUT_REQUIREMENTS,
   parseManualPanelScriptOutput,
@@ -19,7 +25,7 @@ export interface GeneratePanelScriptInput {
   targetPanelCount?: number;
   densityMode?: "relaxed" | "balanced" | "compact";
   scriptPromptInstruction?: string;
-  /** 强制刷新 sourceText 快照（仅 novel_import 有效） */
+  /** 强制刷新 sourceText 快照（novel_import / text_import） */
   refreshSourceText?: boolean;
 }
 
@@ -51,9 +57,17 @@ interface PanelScriptBuildContext {
   stylePreset?: string;
   stylePromptKeywords?: string;
   scriptPromptInstruction?: string;
+  useFaithfulScript: boolean;
 }
 
 const PANEL_SCRIPT_SCHEMA_HINT = PANEL_SCRIPT_OUTPUT_REQUIREMENTS;
+
+function resolvePanelScriptAsset(useFaithfulScript: boolean): PromptAsset<
+  ComicPanelScriptPromptInput,
+  ComicPanelScriptOutput | ComicFaithfulPanelScriptOutput
+> {
+  return useFaithfulScript ? comicFaithfulPanelScriptPrompt : comicPanelScriptPrompt;
+}
 
 function messageContentToString(content: BaseMessage["content"]): string {
   if (typeof content === "string") return content;
@@ -118,10 +132,31 @@ export class ComicPanelScriptService {
     }
 
     const project = episode.project;
+    const adaptationMode = resolveComicAdaptationMode(project.stylePreset, project.sourceType);
+    const useFaithfulScript =
+      adaptationMode === "faithful" && project.sourceType === "text_import";
 
     let sourceText = episode.sourceText ?? "";
     if (!sourceText || input.refreshSourceText) {
-      if (project.sourceType === "novel_import" && project.sourceRef) {
+      if (project.sourceType === "text_import") {
+        try {
+          let fullText = project.sourceInput?.trim() ?? "";
+          if (project.sourceBundle?.bundleJson) {
+            const bundle = JSON.parse(project.sourceBundle.bundleJson) as SourceBundle;
+            if (bundle.rawText?.trim()) fullText = bundle.rawText.trim();
+          }
+          const excerpt = episode.sourceText?.trim();
+          sourceText = excerpt || fullText;
+          if (sourceText) {
+            await prisma.comicEpisode.update({
+              where: { id: episodeId },
+              data: { sourceText },
+            });
+          }
+        } catch {
+          // 快照失败不阻断分格生成
+        }
+      } else if (project.sourceType === "novel_import" && project.sourceRef) {
         try {
           const adapter = adaptationSourceRegistry.resolve("novel_import");
           if (adapter.loadChapterText) {
@@ -152,18 +187,21 @@ export class ComicPanelScriptService {
       }
     }
 
-    const stylePresetRaw = project.stylePreset
-      ? (JSON.parse(project.stylePreset) as { style?: string; promptKeywords?: string; format?: string })
-      : undefined;
-    const stylePreset = stylePresetRaw?.style;
-    const stylePromptKeywords = stylePresetRaw?.promptKeywords;
-    const comicFormat = stylePresetRaw?.format ?? "webtoon";
+    const stylePresetParsed = parseComicStylePreset(project.stylePreset);
+    const stylePreset = stylePresetParsed.style;
+    const stylePromptKeywords = stylePresetParsed.promptKeywords;
+    const comicFormat = stylePresetParsed.format ?? "webtoon";
     const densityMode = input.densityMode ?? "balanced";
-    const targetPanelCount =
+    let targetPanelCount =
       input.targetPanelCount
       ?? (comicFormat === "4koma"
         ? densityMode === "relaxed" ? 10 : densityMode === "compact" ? 16 : 12
         : densityMode === "relaxed" ? 30 : densityMode === "compact" ? 65 : 45);
+    if (useFaithfulScript && input.targetPanelCount == null) {
+      targetPanelCount = comicFormat === "4koma"
+        ? densityMode === "relaxed" ? 8 : densityMode === "compact" ? 14 : 10
+        : densityMode === "relaxed" ? 18 : densityMode === "compact" ? 36 : 24;
+    }
 
     const factDigest =
       project.facts
@@ -225,6 +263,7 @@ export class ComicPanelScriptService {
       stylePreset,
       stylePromptKeywords,
       scriptPromptInstruction: input.scriptPromptInstruction,
+      useFaithfulScript,
     };
   }
 
@@ -296,6 +335,7 @@ export class ComicPanelScriptService {
       stylePreset,
       stylePromptKeywords,
       scriptPromptInstruction: input.scriptPromptInstruction,
+      useFaithfulScript: false,
     };
   }
 
@@ -306,6 +346,17 @@ export class ComicPanelScriptService {
     });
   }
 
+  private scheduleFidelityCheck(
+    episodeId: string,
+    useFaithfulScript: boolean,
+    provider?: LLMProvider,
+  ): void {
+    if (!useFaithfulScript) return;
+    setImmediate(() => {
+      void comicFidelityCheckService.checkEpisode(episodeId, provider);
+    });
+  }
+
   private async persistPanelScriptOutput(
     ctx: PanelScriptBuildContext,
     output: ComicPanelScriptOutput,
@@ -313,6 +364,7 @@ export class ComicPanelScriptService {
   ) {
     const panels = output.panels;
     const scenes = output.scenes ?? [];
+    const scriptAsset = resolvePanelScriptAsset(ctx.useFaithfulScript);
     const scriptConfig = {
       densityMode: ctx.densityMode,
       targetPanelCount: ctx.targetPanelCount,
@@ -320,8 +372,9 @@ export class ComicPanelScriptService {
       stylePreset: ctx.stylePreset,
       stylePromptKeywords: ctx.stylePromptKeywords,
       scriptPromptInstruction: ctx.scriptPromptInstruction,
-      promptAssetId: comicPanelScriptPrompt.id,
-      promptAssetVersion: comicPanelScriptPrompt.version,
+      adaptationMode: ctx.useFaithfulScript ? "faithful" : "creative",
+      promptAssetId: scriptAsset.id,
+      promptAssetVersion: scriptAsset.version,
       provider: meta.provider ?? (meta.source === "manual_paste" ? "manual" : undefined),
       source: meta.source,
       generatedAt: new Date().toISOString(),
@@ -375,6 +428,11 @@ export class ComicPanelScriptService {
         ? undefined
         : (meta.provider as LLMProvider | undefined);
     this.scheduleFactExtraction(ctx.episodeId, factProvider);
+    this.scheduleFidelityCheck(
+      ctx.episodeId,
+      ctx.useFaithfulScript,
+      meta.source === "manual_paste" ? undefined : (meta.provider as LLMProvider | undefined),
+    );
 
     // 人工/自动都只回精简结果，避免把整话 panels 大字段再序列化一遍拖慢响应
     return prisma.comicEpisode.findUnique({
@@ -390,10 +448,11 @@ export class ComicPanelScriptService {
     input: GeneratePanelScriptInput = {},
   ): Promise<PanelScriptPreparePreview> {
     const ctx = await this.buildPanelScriptContext(episodeId, input);
+    const scriptAsset = resolvePanelScriptAsset(ctx.useFaithfulScript);
     const prepared = preparePromptExecution({
-      asset: comicPanelScriptPrompt,
+      asset: scriptAsset,
       promptInput: ctx.promptInput,
-      options: { temperature: 0.55 },
+      options: { temperature: ctx.useFaithfulScript ? 0.35 : 0.55 },
     });
 
     let systemPrompt = "";
@@ -455,10 +514,11 @@ export class ComicPanelScriptService {
     provider?: LLMProvider,
   ) {
     const ctx = await this.buildPanelScriptContext(episodeId, input);
+    const scriptAsset = resolvePanelScriptAsset(ctx.useFaithfulScript);
     const result = await runStructuredPrompt({
-      asset: comicPanelScriptPrompt,
+      asset: scriptAsset,
       promptInput: ctx.promptInput,
-      options: { temperature: 0.55, provider },
+      options: { temperature: ctx.useFaithfulScript ? 0.35 : 0.55, provider },
     });
     return this.persistPanelScriptOutput(ctx, result.output, {
       provider,

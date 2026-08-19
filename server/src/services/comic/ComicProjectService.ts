@@ -8,12 +8,21 @@
 import { prisma } from "../../db/prisma";
 import { adaptationSourceRegistry } from "../adaptation/source/SourceContentPort";
 import { novelSourceAdapter } from "../adaptation/source/NovelSourceAdapter";
+import { originalSourceAdapter } from "../adaptation/source/OriginalSourceAdapter";
+import { textImportSourceAdapter } from "../adaptation/source/TextImportSourceAdapter";
 import type { AdaptationSourceType, SourceBundle, SourceRef } from "../adaptation/contracts/sourceBundle";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { comicVisualAnchorRewritePrompt, type ComicVisualAnchorRewriteOutput } from "../../prompting/prompts/comic/comic.prompts";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
+import {
+  resolveComicAdaptationMode,
+  withComicAdaptationMode,
+  type ComicAdaptationMode,
+} from "./comicAdaptationMode";
 
 adaptationSourceRegistry.register(novelSourceAdapter);
+adaptationSourceRegistry.register(originalSourceAdapter);
+adaptationSourceRegistry.register(textImportSourceAdapter);
 
 interface ComicVisualAnchorData {
   description: string;
@@ -62,10 +71,16 @@ export interface CreateComicProjectInput {
   rawText?: string;
   /** JSON 序列化的画风/格式预设，创建时从向导直接传入 */
   stylePreset?: string;
+  /** 保真 / 创意；写入 stylePreset.adaptationMode */
+  adaptationMode?: ComicAdaptationMode;
 }
 
 export class ComicProjectService {
   async createProject(input: CreateComicProjectInput) {
+    const defaultMode: ComicAdaptationMode =
+      input.adaptationMode
+      ?? (input.sourceType === "text_import" ? "faithful" : "creative");
+    const stylePreset = withComicAdaptationMode(input.stylePreset ?? null, defaultMode);
     return prisma.comicProject.create({
       data: {
         title: input.title,
@@ -74,8 +89,17 @@ export class ComicProjectService {
         sourceInput: input.rawText ?? input.inspiration ?? null,
         trackId: input.trackId ?? null,
         status: "draft",
-        stylePreset: input.stylePreset ?? null,
+        stylePreset,
       },
+    });
+  }
+
+  async updateAdaptationMode(projectId: string, adaptationMode: ComicAdaptationMode) {
+    const project = await prisma.comicProject.findUnique({ where: { id: projectId } });
+    if (!project) throw new Error(`未找到漫画项目：${projectId}`);
+    return prisma.comicProject.update({
+      where: { id: projectId },
+      data: { stylePreset: withComicAdaptationMode(project.stylePreset, adaptationMode) },
     });
   }
 
@@ -247,11 +271,13 @@ export class ComicProjectService {
     const project = await prisma.comicProject.findUnique({ where: { id: projectId } });
     if (!project) throw new Error(`未找到漫画项目：${projectId}`);
 
+    const adaptationMode = resolveComicAdaptationMode(project.stylePreset, project.sourceType);
     const sourceRef: SourceRef = {
       type: project.sourceType as AdaptationSourceType,
       ref: project.sourceRef ?? undefined,
       inspiration: project.sourceInput ?? undefined,
       rawText: project.sourceInput ?? undefined,
+      adaptationMode,
     };
 
     const adapter = adaptationSourceRegistry.resolve(sourceRef.type);
